@@ -5,16 +5,10 @@ using FlightApp.Repositories;
 
 namespace FlightApp.Services
 {
-    public class FlightService
+    public class FlightService : IFlightService
     {
-        private readonly FlightRepository _repo;
-
-        public FlightService(FlightRepository repo)
-        {
-            _repo = repo;
-        }
-
-        public Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req)
-            => _repo.SearchAsync(req);
+        private readonly IFlightRepository _repo;
+        public FlightService(IFlightRepository repo) { _repo = repo; }
+        public Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req) => _repo.SearchAsync(req);
     }
 }
