@@ -1,4 +1,6 @@
-﻿using System.Security.Cryptography;
+﻿using System;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 using FlightApp.Data;
 using FlightApp.DTOs;
 using FlightApp.Models;
@@ -7,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace FlightApp.Services
 {
     // Handles register/login, password hashing, and session tokens
-    public class AuthService
+    public class AuthService : IAuthService   // <-- implement the interface
     {
         private readonly FlightDbContext _db;
         public AuthService(FlightDbContext db) { _db = db; }
@@ -19,6 +21,7 @@ namespace FlightApp.Services
             using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100_000, HashAlgorithmName.SHA256);
             hash = pbkdf2.GetBytes(32);
         }
+
         private static bool Verify(string password, byte[] hash, byte[] salt)
         {
             using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100_000, HashAlgorithmName.SHA256);
