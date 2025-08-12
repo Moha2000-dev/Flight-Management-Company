@@ -1,6 +1,9 @@
-﻿using FlightApp.DTOs;
-using FlightApp.Services;
+﻿using System;
 using System.Globalization;
+using System.Linq;
+using System.Text;
+using FlightApp.DTOs;
+using FlightApp.Services;
 
 namespace FlightApp.UI
 {
@@ -26,19 +29,20 @@ namespace FlightApp.UI
             while (true)
             {
                 if (_token is null) { await AuthMenuAsync(); continue; }
-                if (_role == "Admin") await AdminMenuAsync();
+                if (_role.Equals("Admin", StringComparison.OrdinalIgnoreCase)) await AdminMenuAsync();
                 else await GuestMenuAsync();
             }
         }
 
+        // ----------------- Auth -----------------
         private async Task AuthMenuAsync()
         {
             Console.WriteLine("\n[1] Login  [2] Register  [0] Exit");
             var c = Console.ReadLine();
             if (c == "0") Environment.Exit(0);
 
-            Console.Write("Email: "); var email = Console.ReadLine()!.Trim().ToLower();
-            Console.Write("Password: "); var pass = ReadHidden();
+            Console.Write("Email: "); var email = Console.ReadLine()!.Trim().ToLowerInvariant();
+            Console.Write("Password: "); var pass = ReadHidden(masked: true);
 
             try
             {
@@ -46,19 +50,21 @@ namespace FlightApp.UI
                 {
                     Console.Write("Full name: "); var name = Console.ReadLine()!;
                     Console.Write("Role (Admin/Agent/Guest) [Guest]: "); var role = Console.ReadLine();
-                    var s = await _auth.RegisterAsync(new RegisterDto(name, email, pass, string.IsNullOrWhiteSpace(role) ? "Guest" : role));
-                    (_token, _name, _role) = (s.Token, s.FullName, s.Role);
+                    var s = await _auth.RegisterAsync(new RegisterDto(name, email, pass,
+                        string.IsNullOrWhiteSpace(role) ? "Guest" : role));
+                    SetSession(s);
                 }
                 else
                 {
                     var s = await _auth.LoginAsync(new LoginDto(email, pass));
-                    (_token, _name, _role) = (s.Token, s.FullName, s.Role);
+                    SetSession(s);
                 }
                 Console.WriteLine($"Welcome {_name}! Role: {_role}");
             }
             catch (Exception ex) { Console.WriteLine($"Auth failed: {ex.Message}"); }
         }
 
+        // ----------------- Guest -----------------
         private async Task GuestMenuAsync()
         {
             Console.WriteLine("\nGuest: [1] Search  [2] Book  [3] My bookings  [9] Logout  [0] Exit");
@@ -73,15 +79,20 @@ namespace FlightApp.UI
                 case "3":
                     Console.Write("Passport: "); var p = Console.ReadLine()!;
                     var list = await _booking.GetBookingsByPassportAsync(p);
+                    if (!list.Any()) { Console.WriteLine("No bookings."); break; }
                     foreach (var b in list)
                     {
                         var f = b.Tickets.FirstOrDefault()?.Flight;
                         Console.WriteLine($"PNR {b.BookingRef} -> {f?.FlightNumber} {f?.Route?.OriginAirport?.IATA}->{f?.Route?.DestinationAirport?.IATA} Seats:{b.Tickets.Count}");
                     }
                     break;
+                default:
+                    Console.WriteLine("Unknown option.");
+                    break;
             }
         }
 
+        // ----------------- Admin -----------------
         private async Task AdminMenuAsync()
         {
             Console.WriteLine("\nAdmin: [1] Add Airport  [2] Add Route  [3] Add Aircraft  [4] Add Flight  [5] Search  [9] Logout  [0] Exit");
@@ -99,22 +110,31 @@ namespace FlightApp.UI
                         Console.Write("City: "); var city = Console.ReadLine()!;
                         Console.Write("Country: "); var ct = Console.ReadLine()!;
                         Console.Write("TimeZone [UTC]: "); var tz = Console.ReadLine(); if (string.IsNullOrWhiteSpace(tz)) tz = "UTC";
-                        await _admin.AddAirportAsync(_token!, i, n, city, ct, tz);
-                        Console.WriteLine("Airport added."); break;
+
+                        // If your IAdminService has timezone:
+                        await _admin.AddAirportAsync(_token!, i, n, city, ct, tz!);
+
+                        // If your IAdminService has NO timezone (5 args), use this instead:
+                        // await _admin.AddAirportAsync(_token!, i, n, city, ct);
+
+                        Console.WriteLine("Airport added.");
+                        break;
 
                     case "2":
                         Console.Write("Origin IATA: "); var o = Console.ReadLine()!;
                         Console.Write("Dest IATA: "); var d = Console.ReadLine()!;
                         Console.Write("Distance km: "); var km = int.Parse(Console.ReadLine()!);
                         await _admin.AddRouteAsync(_token!, o, d, km);
-                        Console.WriteLine("Route added."); break;
+                        Console.WriteLine("Route added.");
+                        break;
 
                     case "3":
                         Console.Write("Tail: "); var tail = Console.ReadLine()!;
                         Console.Write("Model: "); var model = Console.ReadLine()!;
                         Console.Write("Capacity: "); var cap = int.Parse(Console.ReadLine()!);
                         await _admin.AddAircraftAsync(_token!, tail, model, cap);
-                        Console.WriteLine("Aircraft added."); break;
+                        Console.WriteLine("Aircraft added.");
+                        break;
 
                     case "4":
                         Console.Write("Flight No: "); var fn = Console.ReadLine()!;
@@ -124,14 +144,22 @@ namespace FlightApp.UI
                         Console.Write("Arrival   (yyyy-MM-dd HH:mm UTC): "); var arr = ParseUtc(Console.ReadLine()!);
                         Console.Write("Tail: "); var ta = Console.ReadLine()!;
                         await _admin.AddFlightAsync(_token!, fn, ro, rd, dep, arr, ta);
-                        Console.WriteLine("Flight added."); break;
+                        Console.WriteLine("Flight added.");
+                        break;
 
-                    case "5": await DoSearchAsync(); break;
+                    case "5":
+                        await DoSearchAsync();
+                        break;
+
+                    default:
+                        Console.WriteLine("Unknown option.");
+                        break;
                 }
             }
             catch (Exception ex) { Console.WriteLine($"Admin failed: {ex.Message}"); }
         }
 
+        // ----------------- Actions -----------------
         private async Task DoSearchAsync()
         {
             Console.Write("From (yyyy-MM-dd) or blank: "); var from = Console.ReadLine();
@@ -149,7 +177,8 @@ namespace FlightApp.UI
             var results = await _flight.SearchAsync(new FlightSearchRequest(fromUtc, toUtc, origin, dest, minFare, maxFare));
             if (!results.Any()) { Console.WriteLine("No flights."); return; }
             foreach (var r in results)
-                Console.WriteLine($"{r.FlightId}: {r.FlightNumber} {r.OriginIata}->{r.DestIata} {r.DepartureUtc:u} FareFrom:{r.MinFare} SeatsSold:{r.SeatsSold}");
+                Console.WriteLine($"{r.FlightId}: {r.FlightNumber} {r.OriginIata}->{r.DestIata} {r.DepartureUtc:u} " +
+                                  $"FareFrom:{r.MinFare} SeatsSold:{r.SeatsSold}");
         }
 
         private async Task DoBookAsync()
@@ -167,18 +196,33 @@ namespace FlightApp.UI
                 : $"Booking failed: {msg}");
         }
 
-        private static string ReadHidden()
+        // ----------------- Helpers -----------------
+        private void SetSession(SessionDto s) { _token = s.Token; _name = s.FullName; _role = s.Role; }
+
+        private static string ReadHidden(bool masked = true)
         {
-            var sb = new System.Text.StringBuilder();
-            ConsoleKeyInfo k;
-            while ((k = Console.ReadKey(true)).Key != ConsoleKey.Enter)
+            // If the host isn't a real console (e.g., PMC), fall back to visible input
+            if (!masked || Console.IsInputRedirected) return Console.ReadLine() ?? string.Empty;
+
+            var sb = new StringBuilder();
+            while (true)
             {
-                if (k.Key == ConsoleKey.Backspace && sb.Length > 0) { sb.Length--; continue; }
-                if (!char.IsControl(k.KeyChar)) sb.Append(k.KeyChar);
+                var k = Console.ReadKey(intercept: true);
+                if (k.Key == ConsoleKey.Enter) { Console.WriteLine(); break; }
+                if (k.Key == ConsoleKey.Backspace)
+                {
+                    if (sb.Length > 0) { sb.Length--; Console.Write("\b \b"); }
+                    continue;
+                }
+                if (!char.IsControl(k.KeyChar))
+                {
+                    sb.Append(k.KeyChar);
+                    Console.Write('*'); // feedback
+                }
             }
-            Console.WriteLine();
             return sb.ToString();
         }
+
         private static DateTime ParseUtc(string txt) =>
             DateTime.SpecifyKind(DateTime.ParseExact(txt, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), DateTimeKind.Utc);
     }

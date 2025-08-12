@@ -14,7 +14,7 @@ class Program
 {
     static async Task Main()
     {
-        var cs = @"Server=(localdb)\MSSQLLocalDB;Database=HotelDB;Trusted_Connection=True;TrustServerCertificate=True";
+        var cs = @"Server=(localdb)\MSSQLLocalDB;Database=FlightDB;Trusted_Connection=True;TrustServerCertificate=True";
 
         var options = new DbContextOptionsBuilder<FlightDbContext>()
             .UseSqlServer(cs)
