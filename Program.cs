@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using FlightApp.Data;
 using FlightApp.Models;
-using Microsoft.EntityFrameworkCore.Migrations;
+using FlightApp.Services;
+using FlightApp.DTOs;
+using FlightApp.Repositories;
 
 class Program
 {
@@ -19,21 +21,11 @@ class Program
 
         using var db = new FlightDbContext(options);
 
-        // 1) create schema:
-        //    - if you have migrations, apply them
-        //    - if you don't, just create the schema from the model
-        Console.WriteLine("Creating/Migrating database…");
-        // add: using Microsoft.EntityFrameworkCore;
+        // 1) Apply migrations (you already have InitialCreate)
+        Console.WriteLine("Applying migrations…");
+        await db.Database.MigrateAsync();
 
-        Console.WriteLine("Creating/Migrating database…");
-        var haveMigrations = db.Database.GetMigrations().Any();
-        if (haveMigrations)
-            await db.Database.MigrateAsync();
-        else
-            await db.Database.EnsureCreatedAsync();
-
-
-        // 2) seed minimal data if empty
+        // 2) Seed minimal data if empty
         if (!db.Airports.Any())
         {
             var mct = new Airport { IATA = "MCT", Name = "Muscat Intl", City = "Muscat", Country = "Oman" };
@@ -52,21 +44,8 @@ class Program
             };
             db.Add(flight);
 
-            var pax = new Passenger
-            {
-                FullName = "Mohammed",
-                PassportNo = "P1234567",
-                Nationality = "OM",
-                DOB = new DateTime(2000, 1, 1)
-            };
-
-            var booking = new Booking
-            {
-                Passenger = pax,
-                BookingRef = "B000001",
-                Status = BookingStatus.Confirmed
-            };
-
+            var pax = new Passenger { FullName = "Mohammed", PassportNo = "P1234567", Nationality = "OM", DOB = new DateTime(2000, 1, 1) };
+            var booking = new Booking { Passenger = pax, BookingRef = "B000001", Status = BookingStatus.Confirmed };
             var t1 = new Ticket { Booking = booking, Flight = flight, SeatNumber = "S001", Fare = 39.50m };
             db.AddRange(pax, booking, t1);
 
@@ -77,7 +56,7 @@ class Program
             await db.SaveChangesAsync();
         }
 
-        // 3) query back with includes
+        // 3) Query back
         var flights = await db.Flights
             .Include(f => f.Route).ThenInclude(r => r.OriginAirport)
             .Include(f => f.Route).ThenInclude(r => r.DestinationAirport)
@@ -89,7 +68,7 @@ class Program
         foreach (var f in flights)
             Console.WriteLine($"{f.FlightNumber} {f.Route!.OriginAirport!.IATA}->{f.Route!.DestinationAirport!.IATA} seatsSold={f.Tickets.Count}");
 
-        // 4) constraint test: duplicate seat on same flight -> should fail
+        // 4) Constraint test: duplicate seat on same flight -> should fail
         var firstFlight = flights.First();
         var anyBooking = await db.Bookings.FirstAsync();
         db.Tickets.Add(new Ticket
@@ -110,13 +89,22 @@ class Program
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("✅ Unique constraint works: duplicate seat rejected.");
+            db.ChangeTracker.Clear(); // discard the failed Added entity
         }
-        finally
-        {
-            Console.ResetColor();
-        }
+        finally { Console.ResetColor(); }
+
+        // 5) Auth + search test
+        var auth = new AuthService(db);
+        try { await auth.RegisterAsync(new RegisterDto("Guest", "guest@example.com", "Secret123!", "Guest")); } catch { /* already exists */ }
+        var session = await auth.LoginAsync(new LoginDto("guest@example.com", "Secret123!"));
+        Console.WriteLine($"Logged in. Token: {session.Token}");
+
+        var flightSvc = new FlightService(new FlightRepository(db));
+        var res = await flightSvc.SearchAsync(new FlightSearchRequest(
+            DateTime.UtcNow, DateTime.UtcNow.AddDays(7), "MCT", "DXB", null, null));
+        foreach (var r in res)
+            Console.WriteLine($"{r.FlightNumber} {r.OriginIata}->{r.DestIata} {r.DepartureUtc:u} MinFare:{r.MinFare}");
 
         Console.WriteLine("Smoke test finished.");
-        await db.Database.MigrateAsync();
     }
 }
