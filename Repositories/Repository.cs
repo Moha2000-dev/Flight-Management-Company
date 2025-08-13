@@ -42,5 +42,10 @@ namespace FlightApp.Repositories
             var e = await _set.FindAsync(keys);
             if (e != null) { _set.Remove(e); await _db.SaveChangesAsync(); }
         }
+
+        public Task<List<T>> GetAllAsync()
+        {
+            return _set.AsNoTracking().ToListAsync();
+        }
     }
 }

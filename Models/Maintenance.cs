@@ -1,16 +1,29 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace FlightApp.Models
 {
     public class AircraftMaintenance
     {
-        [Key] public int MaintenanceId { get; set; }
+        public int AircraftMaintenanceId { get; set; }
 
-        [Required] public int AircraftId { get; set; }
+        // FK → Aircraft
+        public int AircraftId { get; set; }
         public Aircraft? Aircraft { get; set; }
 
-        public DateTime MaintenanceDate { get; set; }
-        [MaxLength(60)] public string Type { get; set; } = string.Empty;  // A-check, C-check, etc.
-        [MaxLength(400)] public string? Notes { get; set; }
+        [Required, MaxLength(100)]
+        public string WorkType { get; set; } = "Inspection";
+
+        [MaxLength(500)]
+        public string? Notes { get; set; }
+
+        // when it was reported/scheduled
+        public DateTime ScheduledUtc { get; set; } = DateTime.UtcNow;
+
+        // ✅ when the task was finished (null means still open)
+        public DateTime? CompletedUtc { get; set; }
+
+        // optional flag if this grounds the aircraft
+        public bool GroundsAircraft { get; set; }
     }
 }

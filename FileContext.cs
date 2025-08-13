@@ -1,12 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿// FileContext.cs
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+using FlightApp.Data;
 
-namespace Flight_Management_Company
+public class FileContext : IDesignTimeDbContextFactory<FlightDbContext>
 {
-    class FileContext
+    public FlightDbContext CreateDbContext(string[] args)
     {
+        var cs = @"Server=(localdb)\MSSQLLocalDB;Database=FlightDB;Trusted_Connection=True;TrustServerCertificate=True";
+        var options = new DbContextOptionsBuilder<FlightDbContext>()
+            .UseSqlServer(cs)
+            .Options;
+        return new FlightDbContext(options);
     }
 }

@@ -10,5 +10,8 @@ namespace FlightApp.Repositories
         Task<T> AddAsync(T entity);
         Task UpdateAsync(T entity);
         Task DeleteAsync(params object[] keys);
+
+        // Add the missing method definition to fix the error  
+        Task<List<T>> GetAllAsync();
     }
 }
