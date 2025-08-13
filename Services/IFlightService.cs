@@ -27,5 +27,6 @@ namespace FlightApp.Services
         Task<AvailableSeatsDto?> GetAvailableSeatsAsync(int flightId);
         Task<List<PassengerConnectionDto>> PassengersWithConnectionsAsync(int maxLayoverHours);
 
+        Task<List<PassengerConnectionDto>> GetPassengersWithConnectionsAsync(int maxLayoverHours);
     }
 }

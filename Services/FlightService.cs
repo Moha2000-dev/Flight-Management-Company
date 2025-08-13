@@ -5,9 +5,9 @@ namespace FlightApp.Services
 {
     public class FlightService : IFlightService
     {
+
         private readonly IFlightRepository _repo;
         public FlightService(IFlightRepository repo) => _repo = repo;
-
         public Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req)
             => _repo.SearchAsync(req);
 
@@ -59,6 +59,9 @@ namespace FlightApp.Services
 
         // NEW (Task 7)
         public Task<List<PassengerConnectionDto>> PassengersWithConnectionsAsync(int maxLayoverHours)
+            => _repo.GetPassengersWithConnectionsAsync(maxLayoverHours);
+
+        public Task<List<PassengerConnectionDto>> GetPassengersWithConnectionsAsync(int maxLayoverHours)
             => _repo.GetPassengersWithConnectionsAsync(maxLayoverHours);
     }
 }

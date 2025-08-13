@@ -29,5 +29,6 @@ namespace FlightApp.Repositories
         Task<List<DailyRevenueDto>> GetDailyRevenueRunningAsync(int daysBack);
         Task<List<ForecastDto>> GetNextWeekForecastAsync();
         Task<List<PassengerConnectionDto>> GetPassengersWithConnectionsAsync(int maxLayoverHours);
+     
     }
 }
