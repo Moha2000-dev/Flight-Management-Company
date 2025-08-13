@@ -13,7 +13,7 @@ namespace FlightApp.Repositories
     {
         public FlightRepository(FlightDbContext db) : base(db) { }
 
-        // -------- Search (unchanged) --------
+        // ---------------- Search ----------------
         public async Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req)
         {
             var q = _db.Flights
@@ -46,13 +46,15 @@ namespace FlightApp.Repositories
             if (req.MinFare.HasValue) proj = proj.Where(x => x.MinFare >= req.MinFare);
             if (req.MaxFare.HasValue) proj = proj.Where(x => x.MinFare <= req.MaxFare);
 
-            return await proj.OrderBy(x => x.DepartureUtc)
-                             .AsNoTracking()
-                             .ToListAsync();
+            return await proj
+                .OrderBy(x => x.DepartureUtc)       // order BEFORE materializing – EF friendly
+                .AsNoTracking()
+                .ToListAsync();
         }
 
-        // -------- Reports / helpers --------
+        // ---------------- Reports / helpers ----------------
 
+        // 1) Manifest – order by entity field, then project (avoids OrderBy(new DTO).Prop)
         public async Task<List<FlightManifestDto>> GetDailyManifestAsync(DateTime dayUtc)
         {
             var start = dayUtc.Date;
@@ -60,6 +62,7 @@ namespace FlightApp.Repositories
 
             return await _db.Flights
                 .Where(f => f.DepartureUtc >= start && f.DepartureUtc < end)
+                .OrderBy(f => f.DepartureUtc)
                 .Select(f => new FlightManifestDto(
                     f.FlightId,
                     f.FlightNumber,
@@ -67,11 +70,11 @@ namespace FlightApp.Repositories
                     f.Route!.DestinationAirport!.IATA,
                     f.DepartureUtc,
                     f.Tickets.Count))
-                .OrderBy(f => f.DepartureUtc)
                 .AsNoTracking()
                 .ToListAsync();
         }
 
+        // 2) Top routes – pure GroupBy/Select (no AsQueryable)
         public async Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(
             DateTime fromUtc, DateTime toUtc, int topN)
         {
@@ -94,27 +97,28 @@ namespace FlightApp.Repositories
                 .ToListAsync();
         }
 
+        // 4) High occupancy – push the filter into EF math (don't filter on DTO.Percent)
         public async Task<List<SeatOccupancyDto>> GetHighOccupancyAsync(
             DateTime fromUtc, DateTime toUtc, int minPercent)
         {
             return await _db.Flights
                 .Include(f => f.Aircraft)
                 .Where(f => f.DepartureUtc >= fromUtc && f.DepartureUtc <= toUtc)
+                .Where(f => f.Aircraft!.Capacity > 0 &&
+                            (100.0 * f.Tickets.Count / f.Aircraft!.Capacity) >= minPercent)
+                .OrderByDescending(f => (100.0 * f.Tickets.Count / f.Aircraft!.Capacity))
                 .Select(f => new SeatOccupancyDto(
                     f.FlightId,
                     f.FlightNumber,
-                    f.DepartureUtc,                            // << include DepartureUtc (matches DTO order)
+                    f.DepartureUtc,
                     f.Aircraft!.Capacity,
                     f.Tickets.Count,
-                    f.Aircraft!.Capacity == 0
-                        ? 0
-                        : (int)Math.Round(100.0 * f.Tickets.Count / f.Aircraft!.Capacity)))
-                .Where(x => x.Percent >= minPercent)
-                .OrderByDescending(x => x.Percent)
+                    (int)Math.Round(100.0 * f.Tickets.Count / f.Aircraft!.Capacity)))
                 .AsNoTracking()
                 .ToListAsync();
         }
 
+        // 5) Available seats (summary)
         public async Task<AvailableSeatsDto?> GetAvailableSeatsAsync(int flightId)
         {
             var f = await _db.Flights
@@ -125,9 +129,10 @@ namespace FlightApp.Repositories
             var sold = await _db.Tickets.CountAsync(t => t.FlightId == flightId);
             var cap = f.Aircraft?.Capacity ?? 0;
             var avail = Math.Max(cap - sold, 0);
-
             return new AvailableSeatsDto(f.FlightId, f.FlightNumber, cap, sold, avail);
         }
+
+        // 10) Overweight bags (simple)
         public Task<List<OverweightBagDto>> GetOverweightBagsAsync(decimal thresholdKg)
         {
             return _db.Baggage
@@ -144,6 +149,63 @@ namespace FlightApp.Repositories
                 .ToListAsync();
         }
 
+        // 7) NEW – passengers with connections (same booking, sequential within N hours)
+        public async Task<List<PassengerConnectionDto>> GetPassengersWithConnectionsAsync(int maxLayoverHours)
+        {
+            // Minimal columns for client-side pairing
+            var legs = await _db.Tickets
+                .Select(t => new
+                {
+                    t.BookingId,
+                    t.Booking!.BookingRef,
+                    PassengerName = t.Booking.Passenger!.FullName,
+                    t.FlightId,
+                    t.Flight!.FlightNumber,
+                    t.Flight.DepartureUtc,
+                    t.Flight.ArrivalUtc,
+                    OriginIata = t.Flight.Route!.OriginAirport!.IATA,
+                    DestIata = t.Flight.Route!.DestinationAirport!.IATA
+                })
+                .OrderBy(x => x.DepartureUtc)
+                .AsNoTracking()
+                .ToListAsync();
 
+            var results = new List<PassengerConnectionDto>();
+            foreach (var g in legs.GroupBy(x => x.BookingId))
+            {
+                var ordered = g.OrderBy(x => x.DepartureUtc).ToList();
+                for (int i = 0; i < ordered.Count - 1; i++)
+                {
+                    var a = ordered[i];
+                    var b = ordered[i + 1];
+
+                    // same day sequence, matching airport, layover within threshold
+                    if (!string.Equals(a.DestIata, b.OriginIata, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var layover = (int)(b.DepartureUtc - a.ArrivalUtc).TotalMinutes;
+                    if (layover < 0) continue; // overlapping in wrong order
+                    if (layover > maxLayoverHours * 60) continue;
+
+                    results.Add(new PassengerConnectionDto(
+                        a.BookingRef,
+                        a.PassengerName,
+                        a.FlightNumber,
+                        b.FlightNumber,
+                        a.OriginIata,
+                        a.DestIata,
+                        b.DestIata,
+                        a.DepartureUtc,
+                        a.ArrivalUtc,
+                        b.DepartureUtc,
+                        layover));
+                }
+            }
+
+            return results
+                .OrderBy(r => r.PassengerName)
+                .ThenBy(r => r.A_DepartureUtc)
+                .ToList();
+        }
     }
 }

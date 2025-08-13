@@ -12,7 +12,7 @@ namespace FlightApp.SeedData
     {
         public static async Task EnsureSeededAsync(FlightDbContext db)
         {
-            // Already seeded?
+            // Idempotent: if we already have airports, assume seeded
             if (await db.Airports.AnyAsync()) return;
 
             var rand = new Random(7);
@@ -99,18 +99,17 @@ namespace FlightApp.SeedData
             db.Passengers.AddRange(pax);
             await db.SaveChangesAsync();
 
-            // ---------- Flights (next 30 days ~6/day) ----------
+            // ---------- Flights (next 30 days, ~6/day) ----------
             var flights = new List<Flight>();
-            var utc0 = DateTime.UtcNow.Date; // today 00:00 UTC
+            var utc0 = DateTime.UtcNow.Date;
 
             for (int day = 0; day < 30; day++)
             {
                 var dayStart = utc0.AddDays(day);
-                // pick 6 random routes per day
                 foreach (var r in routes.OrderBy(_ => rand.Next()).Take(6))
                 {
                     var ac = fleet[rand.Next(fleet.Count)];
-                    var dep = dayStart.AddHours(6 + rand.Next(16)); // between 06:00–22:00
+                    var dep = dayStart.AddHours(6 + rand.Next(16)); // 06:00–22:00
                     var dur = TimeSpan.FromMinutes(60 + rand.Next(120));
 
                     flights.Add(new Flight
@@ -126,57 +125,96 @@ namespace FlightApp.SeedData
             }
 
             db.Flights.AddRange(flights);
-            await db.SaveChangesAsync(); // assigns FlightId
+            await db.SaveChangesAsync(); // get FlightId
 
-            // ---------- Flight Crew assignments ----------
-            var flightCrews = new List<FlightCrew>();
-            var pilots = crew.Where(c => c.Role == CrewRole.Pilot).ToList();
-            var fos = crew.Where(c => c.Role == CrewRole.CoPilot).ToList();
-            var fas = crew.Where(c => c.Role == CrewRole.FlightAttendant).ToList();
+            // ---------- Flight Crew assignments (duplicate-safe & idempotent) ----------
+            var pilotIds = await db.CrewMembers.Where(c => c.Role == CrewRole.Pilot)
+                                               .Select(c => c.CrewId).ToListAsync();
+            var foIds = await db.CrewMembers.Where(c => c.Role == CrewRole.CoPilot)
+                                               .Select(c => c.CrewId).ToListAsync();
+            var faIds = await db.CrewMembers.Where(c => c.Role == CrewRole.FlightAttendant)
+                                               .Select(c => c.CrewId).ToListAsync();
 
-            foreach (var f in flights)
+            var existingPairs = await db.FlightCrews
+                                        .Select(x => new { x.FlightId, x.CrewId })
+                                        .ToListAsync();
+            var seen = new HashSet<(int FlightId, int CrewId)>(
+                existingPairs.Select(x => (x.FlightId, x.CrewId))
+            );
+
+            int PickUnique(HashSet<int> used, List<int> source)
             {
-                var cpt = pilots.OrderBy(_ => rand.Next()).First();
-                var fo = fos.OrderBy(_ => rand.Next()).First();
-                var fa1 = fas.OrderBy(_ => rand.Next()).First();
-                var fa2 = fas.OrderBy(_ => rand.Next()).Skip(1).FirstOrDefault() ?? fa1;
-
-                flightCrews.Add(new FlightCrew { Flight = f, Crew = cpt, RoleOnFlight = "Captain" });
-                flightCrews.Add(new FlightCrew { Flight = f, Crew = fo, RoleOnFlight = "First Officer" });
-                flightCrews.Add(new FlightCrew { Flight = f, Crew = fa1, RoleOnFlight = "FA" });
-                flightCrews.Add(new FlightCrew { Flight = f, Crew = fa2, RoleOnFlight = "FA" });
+                if (source.Count == 0) return 0;
+                int id; int guard = 0;
+                do
+                {
+                    id = source[rand.Next(source.Count)];
+                    if (++guard > source.Count * 2) break;
+                } while (!used.Add(id));
+                return id;
             }
 
-            db.FlightCrews.AddRange(flightCrews);
-            await db.SaveChangesAsync();
+            var fcToAdd = new List<FlightCrew>();
+            foreach (var f in flights)
+            {
+                var used = new HashSet<int>();
+                var cpt = PickUnique(used, pilotIds);
+                var fo = PickUnique(used, foIds);
+                var fa1 = PickUnique(used, faIds);
+                var fa2 = PickUnique(used, faIds);
 
-            // ---------- Seat map per flight (prevents duplicate seats during this run) ----------
-            var seatMap = flights.ToDictionary(
-                f => f.FlightId,
-                f => new HashSet<string>(
-                    db.Tickets.Where(t => t.FlightId == f.FlightId).Select(t => t.SeatNumber),
-                    StringComparer.OrdinalIgnoreCase));
+                var plan = new (int CrewId, string Role)[]
+                {
+                    (cpt, "Captain"),
+                    (fo,  "First Officer"),
+                    (fa1, "FA"),
+                    (fa2, "FA")
+                };
+
+                foreach (var (cid, role) in plan)
+                {
+                    if (cid == 0) continue;
+                    if (!seen.Add((f.FlightId, cid))) continue;
+                    fcToAdd.Add(new FlightCrew
+                    {
+                        FlightId = f.FlightId,
+                        CrewId = cid,
+                        RoleOnFlight = role
+                    });
+                }
+            }
+            if (fcToAdd.Count > 0)
+            {
+                db.FlightCrews.AddRange(fcToAdd);
+                await db.SaveChangesAsync();
+            }
 
             // ---------- Bookings & Tickets ----------
+            // Build a seat map per flight to avoid duplicate seats during this run
+            var seatMap = flights.ToDictionary(
+                f => f.FlightId,
+                f => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            );
+
             var bookings = new List<Booking>();
             var tickets = new List<Ticket>();
 
-            foreach (var n in Enumerable.Range(1, 200))
+            foreach (var _ in Enumerable.Range(1, 200))
             {
                 var p = pax[rand.Next(pax.Count)];
                 var fl = flights[rand.Next(flights.Count)];
                 var seatsWanted = 1 + rand.Next(3); // 1..3
+                var cap = Math.Max(10, fl.Aircraft?.Capacity ?? 180);
 
                 var booking = new Booking
                 {
                     PassengerId = p.PassengerId,
-                    BookingRef = $"B{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
+                    BookingRef = $"B{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant(),
                     Status = BookingStatus.Confirmed,
                     BookingDate = utc0.AddDays(rand.Next(30))
                 };
 
                 var taken = seatMap[fl.FlightId];
-                var cap = Math.Max(10, fl.Aircraft?.Capacity ?? 180);
 
                 for (int i = 0; i < seatsWanted; i++)
                 {
@@ -184,9 +222,8 @@ namespace FlightApp.SeedData
                     int guard = 0;
                     do
                     {
-                        // upper bound is exclusive → use cap + 1
                         seat = $"S{rand.Next(1, cap + 1):000}";
-                        if (++guard > cap * 2) break; // break if flight almost full
+                        if (++guard > cap * 2) break; // nearly full; stop trying
                     }
                     while (!taken.Add(seat));
 
@@ -221,7 +258,7 @@ namespace FlightApp.SeedData
 
             db.Baggage.AddRange(bags);
 
-            // ---------- Maintenance (half open, half done) ----------
+            // ---------- Maintenance (half open) ----------
             var maint = Enumerable.Range(1, 20).Select(i =>
             {
                 var ac = fleet[rand.Next(fleet.Count)];
@@ -245,3 +282,4 @@ namespace FlightApp.SeedData
         }
     }
 }
+
