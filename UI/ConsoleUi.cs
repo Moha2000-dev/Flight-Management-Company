@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using FlightApp.DTOs;
 using FlightApp.Services;
 
@@ -25,30 +26,46 @@ namespace FlightApp.UI
 
         public async Task RunAsync()
         {
-            Console.WriteLine("=== Flight Management ===");
+            Console.Title = "Flight Management Company";
+            WriteBanner();
+
             while (true)
             {
-                if (_token is null) { await AuthMenuAsync(); continue; }
-                if (_role.Equals("Admin", StringComparison.OrdinalIgnoreCase)) await AdminMenuAsync();
-                else await GuestMenuAsync();
+                try
+                {
+                    if (_token is null) { await AuthMenuAsync(); continue; }
+                    if (_role.Equals("Admin", StringComparison.OrdinalIgnoreCase)) await AdminMenuAsync();
+                    else await GuestMenuAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Error: {ex.Message}");
+                    Console.ResetColor();
+                }
             }
         }
 
-        // ----------------- Auth -----------------
+        // ========= AUTH =========
         private async Task AuthMenuAsync()
         {
-            Console.WriteLine("\n[1] Login  [2] Register  [0] Exit");
+            Console.WriteLine("\n[ AUTH ]  1) Login   2) Register   0) Exit");
+            Console.Write("> ");
             var c = Console.ReadLine();
+
             if (c == "0") Environment.Exit(0);
 
-            Console.Write("Email: "); var email = Console.ReadLine()!.Trim().ToLowerInvariant();
-            Console.Write("Password: "); var pass = ReadHidden(masked: true);
+            Console.Write("Email: ");
+            var email = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+
+            Console.Write("Password: ");
+            var pass = ReadHidden(masked: true);
 
             try
             {
                 if (c == "2")
                 {
-                    Console.Write("Full name: "); var name = Console.ReadLine()!;
+                    Console.Write("Full name: "); var name = Console.ReadLine() ?? "";
                     Console.Write("Role (Admin/Agent/Guest) [Guest]: "); var role = Console.ReadLine();
                     var s = await _auth.RegisterAsync(new RegisterDto(name, email, pass,
                         string.IsNullOrWhiteSpace(role) ? "Guest" : role));
@@ -59,96 +76,119 @@ namespace FlightApp.UI
                     var s = await _auth.LoginAsync(new LoginDto(email, pass));
                     SetSession(s);
                 }
+
+                Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"Welcome {_name}! Role: {_role}");
+                Console.ResetColor();
             }
-            catch (Exception ex) { Console.WriteLine($"Auth failed: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Auth failed: {ex.Message}");
+                Console.ResetColor();
+            }
         }
 
-        // ----------------- Guest -----------------
+        // ========= GUEST =========
         private async Task GuestMenuAsync()
         {
-            Console.WriteLine("\nGuest: [1] Search  [2] Book  [3] My bookings  [9] Logout  [0] Exit");
+            Console.WriteLine($"\n[ GUEST ] ({_name})  1) Search  2) Book  3) My bookings  9) Logout  0) Exit");
+            Console.Write("> ");
             var c = Console.ReadLine();
+
             if (c == "0") Environment.Exit(0);
-            if (c == "9") { _token = null; return; }
+            if (c == "9") { await SafeLogoutAsync(); return; }
 
             switch (c)
             {
                 case "1": await DoSearchAsync(); break;
                 case "2": await DoBookAsync(); break;
-                case "3":
-                    Console.Write("Passport: "); var p = Console.ReadLine()!;
-                    var list = await _booking.GetBookingsByPassportAsync(p);
-                    if (!list.Any()) { Console.WriteLine("No bookings."); break; }
-                    foreach (var b in list)
-                    {
-                        var f = b.Tickets.FirstOrDefault()?.Flight;
-                        Console.WriteLine($"PNR {b.BookingRef} -> {f?.FlightNumber} {f?.Route?.OriginAirport?.IATA}->{f?.Route?.DestinationAirport?.IATA} Seats:{b.Tickets.Count}");
-                    }
-                    break;
-                default:
-                    Console.WriteLine("Unknown option.");
-                    break;
+                case "3": await DoListBookingsAsync(); break;
+                default: Console.WriteLine("Unknown option."); break;
             }
         }
 
-        // ----------------- Admin -----------------
+        // ========= ADMIN =========
         private async Task AdminMenuAsync()
         {
-            Console.WriteLine("\nAdmin: [1] Add Airport  [2] Add Route  [3] Add Aircraft  [4] Add Flight  [5] Search  [9] Logout  [0] Exit");
+            Console.WriteLine($"\n[ ADMIN ] ({_name})");
+            Console.WriteLine(" 1) Add Airport");
+            Console.WriteLine(" 2) Add Route");
+            Console.WriteLine(" 3) Add Aircraft");
+            Console.WriteLine(" 4) Add Flight");
+            Console.WriteLine(" 5) Search Flights");
+            Console.WriteLine(" 6) Add Maintenance");
+            Console.WriteLine(" 7) Complete Maintenance");
+            Console.WriteLine(" 8) Book (as admin)");
+            Console.WriteLine(" 9) Logout");
+            Console.WriteLine(" 0) Exit");
+            Console.Write("> ");
             var c = Console.ReadLine();
+
             if (c == "0") Environment.Exit(0);
-            if (c == "9") { _token = null; return; }
+            if (c == "9") { await SafeLogoutAsync(); return; }
 
             try
             {
                 switch (c)
                 {
                     case "1":
-                        Console.Write("IATA: "); var i = Console.ReadLine()!;
-                        Console.Write("Name: "); var n = Console.ReadLine()!;
-                        Console.Write("City: "); var city = Console.ReadLine()!;
-                        Console.Write("Country: "); var ct = Console.ReadLine()!;
-                        Console.Write("TimeZone [UTC]: "); var tz = Console.ReadLine(); if (string.IsNullOrWhiteSpace(tz)) tz = "UTC";
-
-                        // If your IAdminService has timezone:
-                        await _admin.AddAirportAsync(_token!, i, n, city, ct, tz!);
-
-                        // If your IAdminService has NO timezone (5 args), use this instead:
-                        // await _admin.AddAirportAsync(_token!, i, n, city, ct);
-
-                        Console.WriteLine("Airport added.");
+                        var iata = Prompt("IATA").ToUpperInvariant();
+                        var name = Prompt("Name");
+                        var city = Prompt("City");
+                        var country = Prompt("Country");
+                        var tz = Prompt("TimeZone [UTC]", allowEmpty: true);
+                        if (string.IsNullOrWhiteSpace(tz)) tz = "UTC";
+                        await _admin.AddAirportAsync(_token!, iata, name, city, country, tz);
+                        Success("Airport added.");
                         break;
 
                     case "2":
-                        Console.Write("Origin IATA: "); var o = Console.ReadLine()!;
-                        Console.Write("Dest IATA: "); var d = Console.ReadLine()!;
-                        Console.Write("Distance km: "); var km = int.Parse(Console.ReadLine()!);
-                        await _admin.AddRouteAsync(_token!, o, d, km);
-                        Console.WriteLine("Route added.");
+                        var o = Prompt("Origin IATA").ToUpperInvariant();
+                        var d = Prompt("Dest IATA").ToUpperInvariant();
+                        var km = ReadInt("Distance (km)");
+                        var rid = await _admin.AddRouteAsync(_token!, o, d, km);
+                        Success($"Route added. Id={rid}");
                         break;
 
                     case "3":
-                        Console.Write("Tail: "); var tail = Console.ReadLine()!;
-                        Console.Write("Model: "); var model = Console.ReadLine()!;
-                        Console.Write("Capacity: "); var cap = int.Parse(Console.ReadLine()!);
+                        var tail = Prompt("Tail").ToUpperInvariant();
+                        var model = Prompt("Model");
+                        var cap = ReadInt("Capacity");
                         await _admin.AddAircraftAsync(_token!, tail, model, cap);
-                        Console.WriteLine("Aircraft added.");
+                        Success("Aircraft added.");
                         break;
 
                     case "4":
-                        Console.Write("Flight No: "); var fn = Console.ReadLine()!;
-                        Console.Write("Origin IATA: "); var ro = Console.ReadLine()!;
-                        Console.Write("Dest IATA: "); var rd = Console.ReadLine()!;
-                        Console.Write("Departure (yyyy-MM-dd HH:mm UTC): "); var dep = ParseUtc(Console.ReadLine()!);
-                        Console.Write("Arrival   (yyyy-MM-dd HH:mm UTC): "); var arr = ParseUtc(Console.ReadLine()!);
-                        Console.Write("Tail: "); var ta = Console.ReadLine()!;
-                        await _admin.AddFlightAsync(_token!, fn, ro, rd, dep, arr, ta);
-                        Console.WriteLine("Flight added.");
+                        var fn = Prompt("Flight No").ToUpperInvariant();
+                        var ro = Prompt("Origin IATA").ToUpperInvariant();
+                        var rd = Prompt("Dest IATA").ToUpperInvariant();
+                        var dep = ReadUtc("Departure (yyyy-MM-dd HH:mm UTC)");
+                        var arr = ReadUtc("Arrival   (yyyy-MM-dd HH:mm UTC)");
+                        var ta = Prompt("Tail").ToUpperInvariant();
+                        var fid = await _admin.AddFlightAsync(_token!, fn, ro, rd, dep, arr, ta);
+                        Success($"Flight added. Id={fid}");
                         break;
 
-                    case "5":
-                        await DoSearchAsync();
+                    case "5": await DoSearchAsync(); break;
+
+                    case "6":
+                        var mtTail = Prompt("Tail").ToUpperInvariant();
+                        var wt = Prompt("Work type (e.g., A-check)");
+                        var notes = Prompt("Notes (optional)", allowEmpty: true);
+                        var grounds = ReadYesNo("Grounds aircraft (y/n)? ");
+                        var mid = await _admin.AddMaintenanceAsync(_token!, mtTail, wt, notes, grounds);
+                        Success($"Maintenance created. Id={mid}");
+                        break;
+
+                    case "7":
+                        var compId = ReadInt("Maintenance Id");
+                        await _admin.CompleteMaintenanceAsync(_token!, compId);
+                        Success("Marked as completed.");
+                        break;
+
+                    case "8":
+                        await DoBookAsync();
                         break;
 
                     default:
@@ -156,52 +196,138 @@ namespace FlightApp.UI
                         break;
                 }
             }
-            catch (Exception ex) { Console.WriteLine($"Admin failed: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Admin failed: {ex.Message}");
+                Console.ResetColor();
+            }
         }
 
-        // ----------------- Actions -----------------
+        // ========= ACTIONS =========
         private async Task DoSearchAsync()
         {
-            Console.Write("From (yyyy-MM-dd) or blank: "); var from = Console.ReadLine();
-            Console.Write("To   (yyyy-MM-dd) or blank: "); var to = Console.ReadLine();
-            Console.Write("Origin IATA or blank: "); var origin = Console.ReadLine();
-            Console.Write("Dest   IATA or blank: "); var dest = Console.ReadLine();
-            Console.Write("Min fare or blank: "); var min = Console.ReadLine();
-            Console.Write("Max fare or blank: "); var max = Console.ReadLine();
+            var from = Prompt("From (yyyy-MM-dd) or blank", allowEmpty: true);
+            var to = Prompt("To   (yyyy-MM-dd) or blank", allowEmpty: true);
+            var origin = Prompt("Origin IATA or blank", allowEmpty: true);
+            var dest = Prompt("Dest   IATA or blank", allowEmpty: true);
+            var min = Prompt("Min fare or blank", allowEmpty: true);
+            var max = Prompt("Max fare or blank", allowEmpty: true);
 
             DateTime? fromUtc = string.IsNullOrWhiteSpace(from) ? null : DateTime.Parse(from!).ToUniversalTime();
             DateTime? toUtc = string.IsNullOrWhiteSpace(to) ? null : DateTime.Parse(to!).AddDays(1).AddSeconds(-1).ToUniversalTime();
-            decimal? minFare = string.IsNullOrWhiteSpace(min) ? null : decimal.Parse(min!);
-            decimal? maxFare = string.IsNullOrWhiteSpace(max) ? null : decimal.Parse(max!);
+            decimal? minFare = string.IsNullOrWhiteSpace(min) ? null : decimal.Parse(min!, CultureInfo.InvariantCulture);
+            decimal? maxFare = string.IsNullOrWhiteSpace(max) ? null : decimal.Parse(max!, CultureInfo.InvariantCulture);
 
             var results = await _flight.SearchAsync(new FlightSearchRequest(fromUtc, toUtc, origin, dest, minFare, maxFare));
-            if (!results.Any()) { Console.WriteLine("No flights."); return; }
+            if (!results.Any()) { Info("No flights."); return; }
+
+            Console.WriteLine("ID    Flight     Route   Departure(UTC)          FareFrom SeatsSold");
+            Console.WriteLine("---------------------------------------------------------------------");
             foreach (var r in results)
-                Console.WriteLine($"{r.FlightId}: {r.FlightNumber} {r.OriginIata}->{r.DestIata} {r.DepartureUtc:u} " +
-                                  $"FareFrom:{r.MinFare} SeatsSold:{r.SeatsSold}");
+                Console.WriteLine($"{r.FlightId,-5} {r.FlightNumber,-9} {r.OriginIata}->{r.DestIata,-5} {r.DepartureUtc:u} {r.MinFare,8} {r.SeatsSold,9}");
         }
 
         private async Task DoBookAsync()
         {
-            Console.Write("FlightId: "); var fid = int.Parse(Console.ReadLine()!);
-            Console.Write("Seats: "); var seats = int.Parse(Console.ReadLine()!);
-            Console.Write("Passenger name: "); var name = Console.ReadLine()!;
-            Console.Write("Passport: "); var pass = Console.ReadLine()!;
-            Console.Write("Nationality: "); var nat = Console.ReadLine()!;
-            Console.Write("DOB (yyyy-MM-dd): "); var dob = DateTime.Parse(Console.ReadLine()!);
+            var fid = ReadInt("FlightId");
+            var seats = ReadInt("Seats");
+            var name = Prompt("Passenger name");
+            var pass = Prompt("Passport");
+            var nat = Prompt("Nationality");
+            var dob = DateTime.Parse(Prompt("DOB (yyyy-MM-dd)"), CultureInfo.InvariantCulture);
 
             var (ok, msg, b) = await _booking.BookAsync(_token!, fid, seats, name, pass, nat, dob);
-            Console.WriteLine(ok
-                ? $"Booked: {b!.BookingRef} seats [{string.Join(",", b.Tickets.Select(t => t.SeatNumber))}] fare {b.Tickets.First().Fare}"
-                : $"Booking failed: {msg}");
+            if (ok)
+                Success($"Booked: {b!.BookingRef} seats [{string.Join(",", b.Tickets.Select(t => t.SeatNumber))}] fare {b.Tickets.First().Fare}");
+            else
+                Warn($"Booking failed: {msg}");
         }
 
-        // ----------------- Helpers -----------------
+        private async Task DoListBookingsAsync()
+        {
+            var p = Prompt("Passport");
+            var list = await _booking.GetBookingsByPassportAsync(p);
+            if (!list.Any()) { Info("No bookings."); return; }
+
+            foreach (var b in list)
+            {
+                var f = b.Tickets.FirstOrDefault()?.Flight;
+                Console.WriteLine($"PNR {b.BookingRef} -> {f?.FlightNumber} {f?.Route?.OriginAirport?.IATA}->{f?.Route?.DestinationAirport?.IATA} Seats:{b.Tickets.Count}");
+            }
+        }
+
+        // ========= HELPERS =========
         private void SetSession(SessionDto s) { _token = s.Token; _name = s.FullName; _role = s.Role; }
+
+        private async Task SafeLogoutAsync()
+        {
+            try { if (_token != null) await _auth.LogoutAsync(_token); }
+            catch { /* ignore */ }
+            _token = null; _role = "Guest"; _name = "Guest";
+            Info("Logged out.");
+        }
+
+        private static void WriteBanner()
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("===============================================");
+            Console.WriteLine("          Flight Management Company            ");
+            Console.WriteLine("===============================================");
+            Console.ResetColor();
+        }
+
+        private static string Prompt(string label, bool allowEmpty = false)
+        {
+            while (true)
+            {
+                Console.Write($"{label}: ");
+                var s = Console.ReadLine() ?? "";
+                if (allowEmpty || !string.IsNullOrWhiteSpace(s)) return s.Trim();
+                Console.WriteLine("Value required.");
+            }
+        }
+
+        private static int ReadInt(string label)
+        {
+            while (true)
+            {
+                Console.Write($"{label}: ");
+                if (int.TryParse(Console.ReadLine(), out var v)) return v;
+                Console.WriteLine("Enter a valid integer.");
+            }
+        }
+
+        private static DateTime ReadUtc(string label)
+        {
+            while (true)
+            {
+                Console.Write($"{label}: ");
+                var s = Console.ReadLine() ?? "";
+                if (DateTime.TryParseExact(s, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture,
+                                           DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                                           out var dt))
+                {
+                    return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                }
+                Console.WriteLine("Format must be yyyy-MM-dd HH:mm (UTC).");
+            }
+        }
+
+        private static bool ReadYesNo(string label)
+        {
+            while (true)
+            {
+                Console.Write(label);
+                var s = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+                if (s.StartsWith("y")) return true;
+                if (s.StartsWith("n")) return false;
+                Console.WriteLine("Please enter y or n.");
+            }
+        }
 
         private static string ReadHidden(bool masked = true)
         {
-            // If the host isn't a real console (e.g., PMC), fall back to visible input
             if (!masked || Console.IsInputRedirected) return Console.ReadLine() ?? string.Empty;
 
             var sb = new StringBuilder();
@@ -214,16 +340,13 @@ namespace FlightApp.UI
                     if (sb.Length > 0) { sb.Length--; Console.Write("\b \b"); }
                     continue;
                 }
-                if (!char.IsControl(k.KeyChar))
-                {
-                    sb.Append(k.KeyChar);
-                    Console.Write('*'); // feedback
-                }
+                if (!char.IsControl(k.KeyChar)) { sb.Append(k.KeyChar); Console.Write('*'); }
             }
             return sb.ToString();
         }
 
-        private static DateTime ParseUtc(string txt) =>
-            DateTime.SpecifyKind(DateTime.ParseExact(txt, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), DateTimeKind.Utc);
+        private static void Success(string m) { Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine(m); Console.ResetColor(); }
+        private static void Warn(string m) { Console.ForegroundColor = ConsoleColor.Yellow; Console.WriteLine(m); Console.ResetColor(); }
+        private static void Info(string m) { Console.ForegroundColor = ConsoleColor.DarkCyan; Console.WriteLine(m); Console.ResetColor(); }
     }
 }

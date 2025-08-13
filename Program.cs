@@ -1,49 +1,60 @@
-﻿using System;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 
 using FlightApp.Data;
-using FlightApp.Models;
-using FlightApp.DTOs;
-using FlightApp.Repositories;
-using FlightApp.Services;
-using FlightApp.UI; // ConsoleUi
+using FlightApp.UI;
 using FlightApp.SeedData;
+
+// Repos
+using FlightApp.Repositories;
+// Services
+using FlightApp.Services;
+
 class Program
 {
     static async Task Main()
     {
         var cs = @"Server=(localdb)\MSSQLLocalDB;Database=FlightDB;Trusted_Connection=True;TrustServerCertificate=True";
 
-        var options = new DbContextOptionsBuilder<FlightDbContext>()
-            .UseSqlServer(cs)
-            .EnableSensitiveDataLogging()
-            .Options;
+        var services = new ServiceCollection();
 
-        using var db = new FlightDbContext(options);
+        // DbContext
+        services.AddDbContext<FlightDbContext>(o => o.UseSqlServer(cs));
 
-        // 1) Apply migrations
-        Console.WriteLine("Applying migrations…");
-        await db.Database.MigrateAsync();
+        // Generic repo
+        services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
-        // 2) Seed one flight if DB is empty
-        await SeedData.EnsureSeededAsync(db);
+        // Per-entity repos (register all you have)
+        services.AddScoped<IAirportRepository, AirportRepository>();
+        services.AddScoped<IAircraftRepository, AircraftRepository>();
+        services.AddScoped<IRouteRepository, RouteRepository>();
+        services.AddScoped<IPassengerRepository, PassengerRepository>();
+        services.AddScoped<ICrewRepository, CrewRepository>();
+        services.AddScoped<ITicketRepository, TicketRepository>();
+        services.AddScoped<IBaggageRepository, BaggageRepository>();
+        services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
+        services.AddScoped<IFlightRepository, FlightRepository>();
+        services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IFlightService, FlightService>();
+        services.AddScoped<IBookingService, BookingService>();
+        services.AddScoped<IAdminService, AdminService>();
 
-        // 3) Wire services
-        IAuthService authSvc = new AuthService(db);
-        IFlightService flightSvc = new FlightService(new FlightRepository(db));
+        // Console UI
+        services.AddSingleton<ConsoleUi>();
 
-        IBookingService booking = new BookingService(new BookingRepository(db), authSvc);
-        IAdminService admin = new AdminService(db, authSvc);
+        var provider = services.BuildServiceProvider();
 
-        // Optional: ensure there’s an admin user you can log in with quickly
-        try { await authSvc.RegisterAsync(new RegisterDto("Admin User", "admin@example.com", "Admin123!", "Admin")); }
-        catch { /* already exists */ }
+        // migrate + seed
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FlightDbContext>();
+            await db.Database.MigrateAsync();
+            await SeedData.EnsureSeededAsync(db);
+        }
 
-        // 4) Launch console UI (Login/Register → Guest/Admin menus)
-        await new ConsoleUi(authSvc, flightSvc, booking, admin).RunAsync();
+        // run UI
+        await provider.GetRequiredService<ConsoleUi>().RunAsync();
     }
-
-  
 }
