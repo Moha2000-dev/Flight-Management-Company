@@ -1,15 +1,16 @@
-﻿namespace FlightApp.DTOs
+﻿using System;
+using System.Collections.Generic;
+
+namespace FlightApp.DTOs
 {
-    // Report 1: Manifest
     public record FlightManifestDto(
         int FlightId,
         string FlightNumber,
-        string Origin,
-        string Dest,
+        string OriginIata,
+        string DestIata,
         DateTime DepartureUtc,
         int TicketsSold);
 
-    // Report 2: Top routes by revenue
     public record RouteRevenueDto(
         string OriginIata,
         string DestIata,
@@ -17,7 +18,6 @@
         int Tickets,
         decimal Revenue);
 
-    // Report 3: High occupancy
     public record SeatOccupancyDto(
         int FlightId,
         string FlightNumber,
@@ -26,64 +26,88 @@
         int SeatsSold,
         int Percent);
 
-    // Report 4: Available seats for a flight
+    // SeatList is optional -> fixes CS7036 when you only pass summary
     public record AvailableSeatsDto(
         int FlightId,
         string FlightNumber,
         int Capacity,
         int SeatsSold,
         int SeatsAvailable,
-        List<string> SeatList
-    );
+        List<string>? SeatList = null);
 
-
-
-    // Report 5: Overweight bags
     public record OverweightBagDto(
-       string BookingRef,
-       string TagNumber,
-       decimal WeightKg,
-       string FlightNumber,
-       string OriginIata,
-       string DestIata);
+        string BookingRef,
+        string TagNumber,
+        decimal WeightKg,
+        string FlightNumber,
+        string OriginIata,
+        string DestIata);
 
+    public record OnTimePerfDto(
+        string Key,
+        int Flights,
+        int OnTime,
+        int Late,
+        int PctOnTime);
 
-    // 3) On-time performance
-    public record OnTimePerfDto(string Key, int Flights, int OnTime, int Late, int PctOnTime);
+    public record CrewConflictDto(
+        int CrewId,
+        string CrewName,
+        int FlightAId,
+        int FlightBId,
+        DateTime A_DepartureUtc,
+        DateTime B_DepartureUtc);
 
-    // 6) Crew scheduling conflicts
-    public record CrewConflictDto(int CrewId, string CrewName, int FlightAId, int FlightBId);
+    public record FrequentFlierDto(
+        string FullName,
+        int Flights,
+        int DistanceKm);
 
-    // 8) Frequent fliers
-    public record FrequentFlierDto(int PassengerId, string FullName, int Flights, int DistanceKm);
+    public record MaintenanceAlertDto(
+        string TailNumber,
+        int Flights,
+        int DistanceKm,
+        DateTime? LastCompletedUtc,
+        bool NeedsAttention);
 
-    // 9) Maintenance alert (distance ~ “hours” proxy)
-    public record MaintenanceAlertDto(string TailNumber, int Flights, int DistanceKm, DateTime? LastCompletedUtc, bool NeedsAttention);
-
-    // 10) Baggage overweight alerts (per ticket/passenger)
-    public record BaggageOverweightAlertDto(string BookingRef, string PassengerName, string FlightNumber, decimal TotalWeightKg);
-
-    // 11b) Paged flights (simple)
-    public record PagedFlightsDto(int Page, int PageSize, int Total, List<FlightSearchDto> Rows);
-
-    // 13) Running revenue
-    public record DailyRevenueDto(DateTime DayUtc, decimal Revenue, decimal RunningTotal);
-
-    // 14) Simple forecast
-    public record ForecastDto(DateTime DayUtc, int ExpectedTickets);
-
-    // 15) Passenger connections
-    public record PassengerConnectionDto(
+    public record BaggageOverweightAlertDto(
         string BookingRef,
         string PassengerName,
-        string FlightA,
-        string FlightB,
+        string FlightNumber,
+        decimal TotalWeightKg);
+
+    public record FlightListRowDto(
+        int FlightId,
+        string FlightNumber,
         string OriginIata,
-        string ViaIata,
         string DestIata,
-        DateTime A_DepartureUtc,
-        DateTime A_ArrivalUtc,
-        DateTime B_DepartureUtc,
-        int LayoverMinutes
-    );
+        DateTime DepartureUtc);
+
+    public record PagedFlightsDto(
+        int Page,
+        int PageSize,
+        int Total,
+        List<FlightListRowDto> Rows);
+
+    public record DailyRevenueDto(
+        DateTime DayUtc,
+        decimal Revenue,
+        decimal RunningTotal);
+
+    public record ForecastDto(
+        DateTime DayUtc,
+        int ExpectedTickets);
+
+    public record PassengerConnectionDto(
+      string BookingRef,
+      string PassengerName,
+      string FlightA,
+      string FlightB,
+      string OriginIata,
+      string ViaIata,
+      string DestIata,
+      DateTime A_DepartureUtc,
+      DateTime A_ArrivalUtc,
+      DateTime B_DepartureUtc,
+      int LayoverMinutes);
 }

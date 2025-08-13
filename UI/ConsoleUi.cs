@@ -180,7 +180,9 @@ namespace FlightApp.UI
                             Success($"Flight added. Id={fid}");
                             break;
                         }
-                    case "5": await DoSearchAsync(); break;
+                    case "5":
+                        await DoSearchAsync(); break;
+
                     case "6":
                         {
                             var mtTail = Prompt("Tail").ToUpperInvariant();
@@ -227,16 +229,17 @@ namespace FlightApp.UI
                 Console.WriteLine(" 4) Seat occupancy heatmap (>=80% next/prev 7 days)");
                 Console.WriteLine(" 5) Find available seats (by FlightId)");
                 Console.WriteLine(" 6) Crew scheduling conflicts (±7 days)");
-                Console.WriteLine(" 7) Frequent fliers (Top 10 by flights)");            // <— was missing
-                Console.WriteLine(" 8) Maintenance alerts (dist>=10000km or last>30 days)");
-                Console.WriteLine(" 9) Baggage overweight alerts (> 30kg per ticket)");
-                Console.WriteLine("10) Flights paging example (page 1 size 10)");
-                Console.WriteLine("11) Conversion ops (ToDictionary / ToArray)");
-                Console.WriteLine("12) Running daily revenue (last 30 days)");
-                Console.WriteLine("13) Forecast next week (tickets/day)");
+                Console.WriteLine(" 7) Passengers with connections (max layover hours)");
+                Console.WriteLine(" 8) Frequent fliers (Top 10 by flights)");
+                Console.WriteLine(" 9) Maintenance alerts (dist>=10000km or last>30 days)");
+                Console.WriteLine("10) Baggage overweight alerts (> 30kg per ticket)");
+                Console.WriteLine("11) Flights paging example (page 1 size 10)");
+                Console.WriteLine("12) Conversion ops (ToDictionary / ToArray)");
+                Console.WriteLine("13) Running daily revenue (last 30 days)");
+                Console.WriteLine("14) Forecast next week (tickets/day)");
                 Console.WriteLine(" 0) Back");
 
-                var pick = Console.ReadLine();
+                var pick = (Console.ReadLine() ?? "").Trim();
                 if (pick == "0") break;
 
                 try
@@ -247,11 +250,16 @@ namespace FlightApp.UI
                             {
                                 Console.Write("Date (yyyy-MM-dd) blank=today: ");
                                 var txt = Console.ReadLine();
-                                var day = string.IsNullOrWhiteSpace(txt) ? DateTime.UtcNow : DateTime.SpecifyKind(DateTime.Parse(txt), DateTimeKind.Utc);
+                                var day = string.IsNullOrWhiteSpace(txt)
+                                    ? DateTime.UtcNow
+                                    : DateTime.SpecifyKind(DateTime.Parse(txt), DateTimeKind.Utc);
+
                                 var rows = await _flight.GetDailyManifestAsync(day);
                                 if (!rows.Any()) { Console.WriteLine("No flights for that date."); break; }
                                 foreach (var x in rows)
-                                    Console.WriteLine($"{x.FlightNumber} {x.Origin}->{x.Dest} {x.DepartureUtc:u} pax:{x.TicketsSold}");
+                                    Console.WriteLine(
+      $"{x.FlightNumber} {x.OriginIata}->{x.DestIata} {x.DepartureUtc:u} pax:{x.TicketsSold}");
+
                                 break;
                             }
                         case "2":
@@ -284,12 +292,9 @@ namespace FlightApp.UI
                             {
                                 Console.Write("FlightId: ");
                                 if (!int.TryParse(Console.ReadLine(), out var fid)) { Console.WriteLine("Invalid id."); break; }
-                                var a = await _flight.GetAvailableSeatsAsync(fid); // AvailableSeatsDto
+                                var a = await _flight.GetAvailableSeatsAsync(fid); // summary DTO
                                 if (a is null) { Console.WriteLine("Flight not found."); break; }
-
-                                var list = (a as dynamic)?.SeatList as System.Collections.Generic.IEnumerable<string>;
-                                var preview = list != null ? $" Seats:{string.Join(",", list.Take(40))}{(list.Count() > 40 ? "..." : "")}" : "";
-                                Console.WriteLine($"{a.FlightNumber} Capacity:{a.Capacity} Sold:{a.SeatsSold} Available:{a.SeatsAvailable}.{preview}");
+                                Console.WriteLine($"{a.FlightNumber} Capacity:{a.Capacity} Sold:{a.SeatsSold} Available:{a.SeatsAvailable}");
                                 break;
                             }
                         case "6":
@@ -299,6 +304,16 @@ namespace FlightApp.UI
                                 if (!rows.Any()) { Console.WriteLine("No conflicts."); break; }
                                 foreach (var x in rows.Take(30))
                                     Console.WriteLine($"{x.CrewName} conflict between flights {x.FlightAId} and {x.FlightBId}");
+                                break;
+                            }
+                        case "7":
+                            {
+                                var h = ReadInt("Max layover hours [6] (press Enter for 6)");
+                                if (h == 0) h = 6;
+                                var rows = await _flight.GetPassengersWithConnectionsAsync(h);
+                                if (!rows.Any()) { Console.WriteLine("None found."); break; }
+                                foreach (var x in rows.Take(30))
+                                    Console.WriteLine($"{x.PassengerName} {x.FlightA}->{x.FlightB} {x.OriginIata}->{x.ViaIata}->{x.DestIata} layover:{x.LayoverMinutes}m");
                                 break;
                             }
                         case "8":
@@ -484,8 +499,8 @@ namespace FlightApp.UI
 
             if (int.TryParse(s, out var pick))
             {
-                if (pick >= 1 && pick <= top.Count) return top[pick - 1].FlightId; // list index
-                return pick; // raw FlightId typed
+                if (pick >= 1 && pick <= top.Count) return top[pick - 1].FlightId; // pick from list
+                return pick; // typed a raw FlightId
             }
 
             Console.WriteLine("Invalid input.");
@@ -530,7 +545,9 @@ namespace FlightApp.UI
             while (true)
             {
                 Console.Write($"{label}: ");
-                if (int.TryParse(Console.ReadLine(), out var v)) return v;
+                var s = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(s)) return 0; // treat blank as 0 (for defaults)
+                if (int.TryParse(s, out var v)) return v;
                 Console.WriteLine("Enter a valid integer.");
             }
         }
