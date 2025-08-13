@@ -1,13 +1,16 @@
-﻿using FlightApp.Models;
+﻿using System;
+using System.Threading.Tasks;
 
 namespace FlightApp.Services
 {
     public interface IAdminService
     {
-        Task<Airport> AddAirportAsync(string token, string iata, string name, string city, string country, string timeZone);
-        Task<Route> AddRouteAsync(string token, string originIata, string destIata, int distanceKm);
-        Task<Aircraft> AddAircraftAsync(string token, string tail, string model, int capacity);
-        Task<Flight> AddFlightAsync(string token, string flightNumber, string originIata, string destIata,
-                                        DateTime depUtc, DateTime arrUtc, string tailNumber);
+        Task AddAirportAsync(string token, string iata, string name, string city, string country, string? timeZone = null);
+        Task<int> AddRouteAsync(string token, string originIata, string destIata, int distanceKm);
+        Task AddAircraftAsync(string token, string tail, string model, int capacity);
+        Task<int> AddFlightAsync(string token, string flightNo, string originIata, string destIata, DateTime depUtc, DateTime arrUtc, string tail);
+
+        Task<int> AddMaintenanceAsync(string token, string tail, string workType, string? notes, bool grounds);
+        Task CompleteMaintenanceAsync(string token, int maintenanceId);
     }
 }
