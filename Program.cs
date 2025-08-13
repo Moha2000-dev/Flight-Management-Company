@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,12 +21,15 @@ class Program
         var services = new ServiceCollection();
 
         // DbContext
-        services.AddDbContext<FlightDbContext>(o => o.UseSqlServer(cs));
+        services.AddDbContext<FlightDbContext>(o =>
+            o.UseSqlServer(cs)
+             .EnableSensitiveDataLogging() // optional for debugging
+        );
 
         // Generic repo
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
-        // Per-entity repos (register all you have)
+        // Per-entity repos (ensure these exist; comment any you haven’t created yet)
         services.AddScoped<IAirportRepository, AirportRepository>();
         services.AddScoped<IAircraftRepository, AircraftRepository>();
         services.AddScoped<IRouteRepository, RouteRepository>();
@@ -36,25 +40,40 @@ class Program
         services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
         services.AddScoped<IFlightRepository, FlightRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
+
+        // Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IFlightService, FlightService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IAdminService, AdminService>();
 
-        // Console UI
-        services.AddSingleton<ConsoleUi>();
+        // Console UI must be scoped (it uses scoped services)
+        services.AddScoped<ConsoleUi>();
 
         var provider = services.BuildServiceProvider();
 
-        // migrate + seed
+        // migrate + seed in its own scope
         using (var scope = provider.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FlightDbContext>();
-            await db.Database.MigrateAsync();
-            await SeedData.EnsureSeededAsync(db);
+            try
+            {
+                await db.Database.MigrateAsync();
+                await SeedData.EnsureSeededAsync(db);
+                Console.WriteLine("✅ DB migrated & seeded.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Seeding failed: {ex.Message}");
+                Console.WriteLine(ex);
+            }
         }
 
-        // run UI
-        await provider.GetRequiredService<ConsoleUi>().RunAsync();
+        // run UI in a scope (so it can consume scoped services safely)
+        using (var scope = provider.CreateScope())
+        {
+            var ui = scope.ServiceProvider.GetRequiredService<ConsoleUi>();
+            await ui.RunAsync();
+        }
     }
 }

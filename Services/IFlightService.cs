@@ -9,7 +9,7 @@ namespace FlightApp.Services
         Task<List<FlightManifestDto>> GetDailyManifestAsync(DateTime dayUtc);
         Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(DateTime fromUtc, DateTime toUtc, int topN);
         Task<List<SeatOccupancyDto>> GetHighOccupancyAsync(DateTime fromUtc, DateTime toUtc, int minPercent);
-        Task<List<string>> GetAvailableSeatsAsync(int flightId);
-        Task<List<BaggageOverweightDto>> GetOverweightBaggageAsync(decimal limitKg);
+        Task<AvailableSeatsDto?> GetAvailableSeatsAsync(int flightId);
+        Task<List<OverweightBagDto>> GetOverweightBagsAsync(decimal thresholdKg);
     }
 }

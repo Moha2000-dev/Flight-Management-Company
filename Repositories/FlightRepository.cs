@@ -13,7 +13,7 @@ namespace FlightApp.Repositories
     {
         public FlightRepository(FlightDbContext db) : base(db) { }
 
-        // ---- Search (your existing impl) ----
+        // -------- Search (unchanged) --------
         public async Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req)
         {
             var q = _db.Flights
@@ -51,20 +51,22 @@ namespace FlightApp.Repositories
                              .ToListAsync();
         }
 
-        // ---- Advanced reports/helpers ----
+        // -------- Reports / helpers --------
+
         public async Task<List<FlightManifestDto>> GetDailyManifestAsync(DateTime dayUtc)
         {
             var start = dayUtc.Date;
             var end = start.AddDays(1);
 
             return await _db.Flights
-                .Include(f => f.Route).ThenInclude(r => r!.OriginAirport)
-                .Include(f => f.Route).ThenInclude(r => r!.DestinationAirport)
                 .Where(f => f.DepartureUtc >= start && f.DepartureUtc < end)
                 .Select(f => new FlightManifestDto(
-                    f.FlightId, f.FlightNumber,
-                    f.Route!.OriginAirport!.IATA, f.Route!.DestinationAirport!.IATA,
-                    f.DepartureUtc, f.Tickets.Count))
+                    f.FlightId,
+                    f.FlightNumber,
+                    f.Route!.OriginAirport!.IATA,
+                    f.Route!.DestinationAirport!.IATA,
+                    f.DepartureUtc,
+                    f.Tickets.Count))
                 .OrderBy(f => f.DepartureUtc)
                 .AsNoTracking()
                 .ToListAsync();
@@ -75,7 +77,8 @@ namespace FlightApp.Repositories
         {
             return await _db.Tickets
                 .Where(t => t.Flight!.DepartureUtc >= fromUtc && t.Flight.DepartureUtc <= toUtc)
-                .GroupBy(t => new {
+                .GroupBy(t => new
+                {
                     O = t.Flight!.Route!.OriginAirport!.IATA,
                     D = t.Flight!.Route!.DestinationAirport!.IATA
                 })
@@ -84,8 +87,7 @@ namespace FlightApp.Repositories
                     g.Key.D,
                     g.Select(x => x.FlightId).Distinct().Count(),
                     g.Count(),
-                    g.Sum(x => x.Fare)
-                ))
+                    g.Sum(x => x.Fare)))
                 .OrderByDescending(r => r.Revenue)
                 .Take(topN)
                 .AsNoTracking()
@@ -101,38 +103,47 @@ namespace FlightApp.Repositories
                 .Select(f => new SeatOccupancyDto(
                     f.FlightId,
                     f.FlightNumber,
+                    f.DepartureUtc,                            // << include DepartureUtc (matches DTO order)
                     f.Aircraft!.Capacity,
                     f.Tickets.Count,
                     f.Aircraft!.Capacity == 0
                         ? 0
-                        : (int)Math.Round(100.0 * f.Tickets.Count / f.Aircraft!.Capacity)
-                ))
+                        : (int)Math.Round(100.0 * f.Tickets.Count / f.Aircraft!.Capacity)))
                 .Where(x => x.Percent >= minPercent)
                 .OrderByDescending(x => x.Percent)
                 .AsNoTracking()
                 .ToListAsync();
         }
 
-        public async Task<List<string>> GetAvailableSeatsAsync(int flightId)
+        public async Task<AvailableSeatsDto?> GetAvailableSeatsAsync(int flightId)
         {
-            var flight = await _db.Flights.Include(f => f.Aircraft).FirstAsync(f => f.FlightId == flightId);
-            var cap = flight.Aircraft!.Capacity;
+            var f = await _db.Flights
+                .Include(x => x.Aircraft)
+                .FirstOrDefaultAsync(x => x.FlightId == flightId);
+            if (f == null) return null;
 
-            var all = Enumerable.Range(1, cap).Select(i => $"S{i:000}");
-            var taken = await _db.Tickets.Where(t => t.FlightId == flightId).Select(t => t.SeatNumber).ToListAsync();
+            var sold = await _db.Tickets.CountAsync(t => t.FlightId == flightId);
+            var cap = f.Aircraft?.Capacity ?? 0;
+            var avail = Math.Max(cap - sold, 0);
 
-            return all.Except(taken, StringComparer.OrdinalIgnoreCase).Take(1000).ToList();
+            return new AvailableSeatsDto(f.FlightId, f.FlightNumber, cap, sold, avail);
         }
-
-        public async Task<List<BaggageOverweightDto>> GetOverweightBaggageAsync(decimal limitKg)
+        public Task<List<OverweightBagDto>> GetOverweightBagsAsync(decimal thresholdKg)
         {
-            return await _db.Baggage
-                .Where(b => b.WeightKg > limitKg)
-                .Select(b => new BaggageOverweightDto(
-                    b.Ticket!.Booking!.BookingRef, b.TagNumber, b.WeightKg, b.Ticket.FlightId))
+            return _db.Baggage
+                .Where(b => b.WeightKg > thresholdKg)
+                .Select(b => new OverweightBagDto(
+                    b.Ticket!.Booking!.BookingRef,
+                    b.TagNumber,
+                    b.WeightKg,
+                    b.Ticket.Flight!.FlightNumber,
+                    b.Ticket.Flight.Route!.OriginAirport!.IATA,
+                    b.Ticket.Flight.Route!.DestinationAirport!.IATA))
                 .OrderByDescending(x => x.WeightKg)
                 .AsNoTracking()
                 .ToListAsync();
         }
+
+
     }
 }

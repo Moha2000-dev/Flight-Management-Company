@@ -7,11 +7,15 @@ namespace FlightApp.Repositories
     {
         Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req);
 
-        // NEW:
         Task<List<FlightManifestDto>> GetDailyManifestAsync(DateTime dayUtc);
         Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(DateTime fromUtc, DateTime toUtc, int topN);
         Task<List<SeatOccupancyDto>> GetHighOccupancyAsync(DateTime fromUtc, DateTime toUtc, int minPercent);
-        Task<List<string>> GetAvailableSeatsAsync(int flightId);
-        Task<List<BaggageOverweightDto>> GetOverweightBaggageAsync(decimal limitKg);
+
+        // Return ONE aggregate for a flight’s availability (not a list of strings)
+        Task<AvailableSeatsDto?> GetAvailableSeatsAsync(int flightId);
+
+        // Use the DTO name you actually have. If your DTO file says BaggageOverweightDto,
+        // use that here and in the repo/service.
+        Task<List<OverweightBagDto>> GetOverweightBagsAsync(decimal thresholdKg);
     }
 }
