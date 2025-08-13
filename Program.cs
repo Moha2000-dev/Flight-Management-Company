@@ -60,11 +60,11 @@ class Program
             {
                 await db.Database.MigrateAsync();
                 await SeedData.EnsureSeededAsync(db);
-                Console.WriteLine("✅ DB migrated & seeded.");
+                Console.WriteLine(" done DB migrated & seeded.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Seeding failed: {ex.Message}");
+                Console.WriteLine($" Seeding failed: {ex.Message}");
                 Console.WriteLine(ex);
             }
         }
