@@ -232,7 +232,7 @@ namespace FlightApp.UI
                 Console.WriteLine(" 7) Passengers with connections (max layover hours)");
                 Console.WriteLine(" 8) Frequent fliers (Top 10 by flights)");
                 Console.WriteLine(" 9) Maintenance alerts (dist>=10000km or last>30 days)");
-                Console.WriteLine("10) Baggage overweight alerts (> 30kg per ticket)");
+                Console.WriteLine("10) Baggage overweight alerts (> 20kg per ticket)");
                 Console.WriteLine("11) Flights paging example (page 1 size 10)");
                 Console.WriteLine("12) Conversion ops (ToDictionary / ToArray)");
                 Console.WriteLine("13) Running daily revenue (last 30 days)");
@@ -332,9 +332,9 @@ namespace FlightApp.UI
                             }
                         case "10":
                             {
-                                var rows = await _flight.BaggageOverweightAlertsAsync(30m);
+                                var rows = await _flight.BaggageOverweightAlertsAsync(20m);
                                 if (!rows.Any()) { Console.WriteLine("None."); break; }
-                                foreach (var b in rows.Take(20))
+                                foreach (var b in rows.Take(50))
                                     Console.WriteLine($"{b.BookingRef} {b.PassengerName} {b.FlightNumber} Total:{b.TotalWeightKg}kg");
                                 break;
                             }
