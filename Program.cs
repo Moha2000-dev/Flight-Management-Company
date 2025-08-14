@@ -63,7 +63,10 @@ class Program
 
                 // ⬇️ add this line to generate some delayed arrivals for testing
                 await DemoData.DelaysAsync(db, count: 40, minDelayMin: 5, maxDelayMin: 45);
-
+                await DemoData.MakeHighOccupancyAsync(db, minPercent: 85, flightsToBoost: 8);      // Task #4 fuel
+                await DemoData.MakeConnectionItinerariesAsync(db, layoverHours: 3, itineraries: 10);                                                           // optional:
+                await DemoData.DelaysAsync(db, count: 15, minDelayMin: 10, maxDelayMin: 45);
+                await FlightApp.SeedData.DemoData.SeedHighOccupancyAsync(db,minPercent: 85, daysWindow: 7, howManyFlights: 8);// nice for Task #3
                 Console.WriteLine(" DB migrated, seeded & delays injected.");
             }
             catch (Exception ex)
