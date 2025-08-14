@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
 
 namespace FlightApp.DTOs
 {
@@ -12,12 +13,12 @@ namespace FlightApp.DTOs
         int TicketsSold);
 
     public record RouteRevenueDto(
-        string OriginIata,
-        string DestIata,
-        int Flights,
-        int Tickets,
-        decimal Revenue);
-
+           string OriginIata,
+           string DestIata,
+           int Flights,
+           int Tickets,
+           decimal Revenue
+       );
     public record SeatOccupancyDto(
         int FlightId,
         string FlightNumber,

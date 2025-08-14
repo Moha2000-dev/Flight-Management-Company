@@ -2,11 +2,11 @@
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using FlightApp.SeedData; // at top
 
 using FlightApp.Data;
 using FlightApp.UI;
 using FlightApp.SeedData;
-
 // Repos
 using FlightApp.Repositories;
 // Services
@@ -60,7 +60,11 @@ class Program
             {
                 await db.Database.MigrateAsync();
                 await SeedData.EnsureSeededAsync(db);
-                Console.WriteLine(" done DB migrated & seeded.");
+
+                // ⬇️ add this line to generate some delayed arrivals for testing
+                await DemoData.DelaysAsync(db, count: 40, minDelayMin: 5, maxDelayMin: 45);
+
+                Console.WriteLine(" DB migrated, seeded & delays injected.");
             }
             catch (Exception ex)
             {

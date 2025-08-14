@@ -11,13 +11,16 @@ namespace FlightApp.Repositories
         Task<List<FlightSearchDto>> SearchAsync(FlightSearchRequest req);
 
         Task<List<FlightManifestDto>> GetDailyManifestAsync(DateTime dayUtc);
-        Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(DateTime fromUtc, DateTime toUtc, int topN);
+       
         Task<List<SeatOccupancyDto>> GetHighOccupancyAsync(DateTime fromUtc, DateTime toUtc, int minPercent);
         Task<AvailableSeatsDto?> GetAvailableSeatsAsync(int flightId);
         Task<List<OverweightBagDto>> GetOverweightBagsAsync(decimal thresholdKg);
 
         // “Tasks” items
-        Task<List<OnTimePerfDto>> GetOnTimePerformanceAsync(DateTime fromUtc, DateTime toUtc, int toleranceMinutes, bool byRoute);
+        // IFlightRepository
+        Task<List<OnTimePerfDto>> GetOnTimePerformanceAsync(
+            DateTime fromUtc, DateTime toUtc, int toleranceMinutes, bool byRoute = true);
+
         Task<List<CrewConflictDto>> GetCrewConflictsAsync(DateTime fromUtc, DateTime toUtc);
    
         Task<List<FrequentFlierDto>> GetFrequentFliersAsync(int topN, bool byFlights);
@@ -29,6 +32,9 @@ namespace FlightApp.Repositories
         Task<List<DailyRevenueDto>> GetDailyRevenueRunningAsync(int daysBack);
         Task<List<ForecastDto>> GetNextWeekForecastAsync();
         Task<List<PassengerConnectionDto>> GetPassengersWithConnectionsAsync(int maxLayoverHours);
-     
+
+        Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(DateTime fromUtc, DateTime toUtc, int topN);
+  
+
     }
 }

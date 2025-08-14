@@ -28,5 +28,6 @@ namespace FlightApp.Models
 
         public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
         public ICollection<FlightCrew> FlightCrews { get; set; } = new List<FlightCrew>();
+
     }
 }

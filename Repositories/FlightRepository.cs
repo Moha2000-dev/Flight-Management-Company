@@ -7,6 +7,7 @@ using FlightApp.DTOs;
 using FlightApp.Models;
 using Microsoft.EntityFrameworkCore;
 
+
 namespace FlightApp.Repositories
 {
     public class FlightRepository : Repository<Flight>, IFlightRepository
@@ -70,25 +71,44 @@ namespace FlightApp.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(DateTime fromUtc, DateTime toUtc, int topN)
+        // FlightRepository.cs
+
+
+
+        // DTO: RouteRevenueDto(string OriginIata, string DestIata, int Flights, int Tickets, decimal Revenue)
+
+        public async Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(
+            DateTime fromUtc, DateTime toUtc, int topN)
         {
-            return await _db.Tickets
-                .Where(t => t.Flight!.DepartureUtc >= fromUtc && t.Flight.DepartureUtc <= toUtc)
-                .GroupBy(t => new {
-                    O = t.Flight!.Route!.OriginAirport!.IATA,
-                    D = t.Flight!.Route!.DestinationAirport!.IATA
+            var flat = await _db.Tickets
+                .Where(t => t.Flight!.DepartureUtc >= fromUtc &&
+                            t.Flight.DepartureUtc <= toUtc)
+                .Select(t => new
+                {
+                    t.FlightId,
+                    t.Fare,
+                    Origin = t.Flight!.Route!.OriginAirport!.IATA,
+                    Dest = t.Flight!.Route!.DestinationAirport!.IATA
                 })
+                .AsNoTracking()
+                .ToListAsync(); // <— materialize first
+
+            return flat
+                .GroupBy(x => new { x.Origin, x.Dest })
                 .Select(g => new RouteRevenueDto(
-                    g.Key.O,
-                    g.Key.D,
+                    g.Key.Origin,
+                    g.Key.Dest,
                     g.Select(x => x.FlightId).Distinct().Count(),
                     g.Count(),
-                    g.Sum(x => x.Fare)))
+                    g.Sum(x => x.Fare)
+                ))
                 .OrderByDescending(r => r.Revenue)
                 .Take(topN)
-                .AsNoTracking()
-                .ToListAsync();
+                .ToList();
         }
+
+
+
 
         public async Task<List<SeatOccupancyDto>> GetHighOccupancyAsync(DateTime fromUtc, DateTime toUtc, int minPercent)
         {
@@ -140,44 +160,46 @@ namespace FlightApp.Repositories
         }
 
         // ---------- Extra “Tasks” items ----------
-        public async Task<List<OnTimePerfDto>> GetOnTimePerformanceAsync(DateTime fromUtc, DateTime toUtc, int toleranceMinutes, bool byRoute)
-        {
-            // We don’t have “actual” times. Treat all flights as on-time; this compiles & feeds the UI.
-            // If you later add actuals, just change the OnTime expression below.
-            var q = _db.Flights
-                .Where(f => f.DepartureUtc >= fromUtc && f.DepartureUtc <= toUtc);
 
-            if (byRoute)
-            {
-                return await q
-                    .GroupBy(f => f.Route!.OriginAirport!.IATA + "-" + f.Route!.DestinationAirport!.IATA)
-                    .Select(g => new OnTimePerfDto(
-                        g.Key,
-                        g.Count(),
-                        g.Count(),   // OnTime
-                        0,           // Late
-                        100))        // Pct
-                    .OrderByDescending(x => x.PctOnTime)
-                    .AsNoTracking()
-                    .ToListAsync();
-            }
-            else
-            {
-                return await q
-                    .GroupBy(f => f.Aircraft!.Model)
-                    .Select(g => new OnTimePerfDto(
-                        g.Key,
-                        g.Count(),
-                        g.Count(),
-                        0,
-                        100))
-                    .OrderByDescending(x => x.PctOnTime)
-                    .AsNoTracking()
-                    .ToListAsync();
-            }
-        }
 
-        public async Task<List<CrewConflictDto>> GetCrewConflictsAsync(DateTime fromUtc, DateTime toUtc)
+public async Task<List<OnTimePerfDto>> GetOnTimePerformanceAsync(
+    DateTime fromUtc, DateTime toUtc, int toleranceMinutes, bool byRoute = true)
+    {
+        // 1) Project only simple scalars (EF can translate this fully)
+        var rows = await _db.Flights
+            .Where(f => f.DepartureUtc >= fromUtc && f.DepartureUtc <= toUtc)
+            .Select(f => new
+            {
+                Key = byRoute
+                    ? (f.Route!.OriginAirport!.IATA + "-" + f.Route!.DestinationAirport!.IATA)
+                    : f.Aircraft!.TailNumber,   // or company, etc.
+                                                // NOTE: you don’t have an actual vs scheduled arrival in the schema,
+                                                // so we mark all flights as "on-time". When you add ActualArrivalUtc,
+                                                // compute the bool here (within toleranceMinutes).
+                OnTime = true
+            })
+            .AsNoTracking()
+            .ToListAsync();
+
+        // 2) Group & aggregate client-side (counts are small; avoids translation traps)
+        var result = rows
+            .GroupBy(x => x.Key)
+            .Select(g =>
+            {
+                var flights = g.Count();
+                var onTime = g.Count(x => x.OnTime);
+                var late = flights - onTime;
+                var pct = flights == 0 ? 0 : (int)Math.Round(100.0 * onTime / flights);
+                return new OnTimePerfDto(g.Key, flights, onTime, late, pct);
+            })
+            .OrderByDescending(x => x.PctOnTime)
+            .ToList();
+
+        return result;
+    }
+
+
+    public async Task<List<CrewConflictDto>> GetCrewConflictsAsync(DateTime fromUtc, DateTime toUtc)
         {
             var legs = await _db.FlightCrews
                 .Where(fc => fc.Flight!.DepartureUtc >= fromUtc && fc.Flight!.DepartureUtc <= toUtc)
@@ -386,27 +408,44 @@ namespace FlightApp.Repositories
                 .ToArrayAsync();
         }
 
-        public async Task<List<DailyRevenueDto>> GetDailyRevenueRunningAsync(int daysBack)
-        {
-            var from = DateTime.UtcNow.Date.AddDays(-daysBack + 1);
 
-            var daily = await _db.Tickets
-                .Where(t => t.Flight!.DepartureUtc >= from)
-                .GroupBy(t => t.Flight!.DepartureUtc.Date)
-                .Select(g => new DailyRevenueDto(g.Key, g.Sum(x => x.Fare), 0m))
-                .OrderBy(x => x.DayUtc)
-                .ToListAsync();
+public async Task<List<DailyRevenueDto>> GetDailyRevenueRunningAsync(int daysBack)
+    {
+        // inclusive window from N-1 days ago thru today
+        var today = DateTime.UtcNow.Date;
+        var from = today.AddDays(-(daysBack - 1));
 
-            decimal run = 0m;
-            for (int i = 0; i < daily.Count; i++)
+        // 1) Server-side: project only simple scalars (EF can translate)
+        var rows = await _db.Tickets
+            .Where(t => t.Flight!.DepartureUtc >= from)
+            .Select(t => new
             {
-                run += daily[i].Revenue;
-                daily[i] = daily[i] with { RunningTotal = run };
-            }
-            return daily;
+                Day = t.Flight!.DepartureUtc.Date, // scalar date (translate ok)
+                Fare = t.Fare
+            })
+            .AsNoTracking()
+            .ToListAsync();
+
+        // 2) Client-side: group by day and sum
+        var perDay = rows
+            .GroupBy(x => x.Day)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Fare));
+
+        // 3) Fill every day in window + compute running total
+        var result = new List<DailyRevenueDto>();
+        decimal run = 0m;
+        for (var d = from; d <= today; d = d.AddDays(1))
+        {
+            var rev = perDay.TryGetValue(d, out var v) ? v : 0m;
+            run += rev;
+            result.Add(new DailyRevenueDto(d, rev, run));
         }
 
-        public async Task<List<ForecastDto>> GetNextWeekForecastAsync()
+        return result;
+    }
+
+
+    public async Task<List<ForecastDto>> GetNextWeekForecastAsync()
         {
             var start = DateTime.UtcNow.Date.AddDays(-14);
 

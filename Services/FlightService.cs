@@ -15,7 +15,7 @@ namespace FlightApp.Services
             => _repo.GetDailyManifestAsync(dayUtc);
 
         public Task<List<RouteRevenueDto>> GetTopRoutesByRevenueAsync(DateTime fromUtc, DateTime toUtc, int topN)
-            => _repo.GetTopRoutesByRevenueAsync(fromUtc, toUtc, topN);
+         => _repo.GetTopRoutesByRevenueAsync(fromUtc, toUtc, topN);
 
         public Task<List<SeatOccupancyDto>> GetHighOccupancyAsync(DateTime fromUtc, DateTime toUtc, int minPercent)
             => _repo.GetHighOccupancyAsync(fromUtc, toUtc, minPercent);
@@ -27,8 +27,10 @@ namespace FlightApp.Services
             => _repo.GetOverweightBagsAsync(thresholdKg);
 
         // already present in your project – keep them
+        // FlightService
         public Task<List<OnTimePerfDto>> OnTimePerformanceAsync(DateTime fromUtc, DateTime toUtc, int toleranceMinutes, bool byRoute = true)
             => _repo.GetOnTimePerformanceAsync(fromUtc, toUtc, toleranceMinutes, byRoute);
+
 
         public Task<List<CrewConflictDto>> CrewConflictsAsync(DateTime fromUtc, DateTime toUtc)
             => _repo.GetCrewConflictsAsync(fromUtc, toUtc);
