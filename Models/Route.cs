@@ -18,7 +18,10 @@ namespace FlightApp.Models
 
         public int DistanceKm { get; set; }
 
-      
-    }
+        public virtual ICollection<Route> OriginRoutes { get; set; } = new List<Route>(); // or RoutesFrom
+        public virtual ICollection<Route> DestRoutes { get; set; } = new List<Route>(); // or RoutesTo
+    
+
+}
 }
 

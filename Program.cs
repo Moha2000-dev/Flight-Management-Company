@@ -1,17 +1,15 @@
 ﻿using System;
+using System.Data;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
-using FlightApp.SeedData; // at top
+using Microsoft.Extensions.DependencyInjection;
 
 using FlightApp.Data;
+using FlightApp.Repositories;
+using FlightApp.Services;
 using FlightApp.UI;
 using FlightApp.SeedData;
-// Repos
-using FlightApp.Repositories;
-// Services
-using FlightApp.Services;
-using System.Data;
+using Microsoft.Data.SqlClient;
 
 class Program
 {
@@ -21,28 +19,17 @@ class Program
 
         var services = new ServiceCollection();
 
-        // DbContext
-        services.AddDbContext<FlightDbContext>(o =>
-            o.UseSqlServer(cs)
-             .EnableSensitiveDataLogging() // optional for debugging
-        );
-        // DbContext factory (for migrations, etc.)
-        services.AddSingleton<Func<IDbConnection>>(_ =>
-        {
-            var cs = @"Server=(localdb)\MSSQLLocalDB;Database=FlightDB;Trusted_Connection=True;TrustServerCertificate=True";
-            return () => new Microsoft.Data.SqlClient.SqlConnection(cs);
-        });
-
-        // Program.cs
+        // DbContext (single registration)
         services.AddDbContext<FlightDbContext>(opt =>
-            opt.UseLazyLoadingProxies()
-               .UseSqlServer(cs));
+            opt.UseSqlServer(cs)
+               .UseLazyLoadingProxies()        // lazy loading → make nav properties 'virtual'
+               .EnableSensitiveDataLogging()); // debug only
 
+        // Only keep this if you'll use Dapper; otherwise delete
+        services.AddSingleton<Func<IDbConnection>>(_ => () => new SqlConnection(cs));
 
-        // Generic repo
+        // Generic + per-entity repos
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
-
-        // Per-entity repos (ensure these exist; comment any you haven’t created yet)
         services.AddScoped<IAirportRepository, AirportRepository>();
         services.AddScoped<IAircraftRepository, AircraftRepository>();
         services.AddScoped<IRouteRepository, RouteRepository>();
@@ -60,12 +47,12 @@ class Program
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IAdminService, AdminService>();
 
-        // Console UI must be scoped (it uses scoped services)
+        // UI
         services.AddScoped<ConsoleUi>();
 
         var provider = services.BuildServiceProvider();
 
-        // migrate + seed in its own scope
+        // Migrate + seed + demo data
         using (var scope = provider.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FlightDbContext>();
@@ -74,13 +61,12 @@ class Program
                 await db.Database.MigrateAsync();
                 await SeedData.EnsureSeededAsync(db);
 
-                // ⬇️ add this line to generate some delayed arrivals for testing
-                await DemoData.DelaysAsync(db, count: 40, minDelayMin: 5, maxDelayMin: 45);
-                await DemoData.MakeHighOccupancyAsync(db, minPercent: 85, flightsToBoost: 8);      // Task #4 fuel
-                await DemoData.MakeConnectionItinerariesAsync(db, layoverHours: 3, itineraries: 10);                                                           // optional:
-                await DemoData.DelaysAsync(db, count: 15, minDelayMin: 10, maxDelayMin: 45);
-                await FlightApp.SeedData.DemoData.SeedHighOccupancyAsync(db,minPercent: 85, daysWindow: 7, howManyFlights: 8);// nice for Task #3
-                Console.WriteLine(" DB migrated, seeded & delays injected.");
+                // --- Demo data to exercise the Tasks menu ---
+                await DemoData.DelaysAsync(db, count: 40, minDelayMin: 5, maxDelayMin: 45);  // create delayed arrivals
+                await DemoData.SeedHighOccupancyAsync(db, minPercent: 85, daysWindow: 7, howManyFlights: 8); // push some flights >=85%
+                await DemoData.MakeConnectionItinerariesAsync(db, layoverHours: 3, itineraries: 10);          // create connecting bookings
+
+                Console.WriteLine(" DB migrated, seeded & demo data injected.");
             }
             catch (Exception ex)
             {
@@ -89,7 +75,7 @@ class Program
             }
         }
 
-        // run UI in a scope (so it can consume scoped services safely)
+        // Run app
         using (var scope = provider.CreateScope())
         {
             var ui = scope.ServiceProvider.GetRequiredService<ConsoleUi>();
