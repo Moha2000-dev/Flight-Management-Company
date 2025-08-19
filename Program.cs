@@ -11,6 +11,7 @@ using FlightApp.SeedData;
 using FlightApp.Repositories;
 // Services
 using FlightApp.Services;
+using System.Data;
 
 class Program
 {
@@ -25,6 +26,12 @@ class Program
             o.UseSqlServer(cs)
              .EnableSensitiveDataLogging() // optional for debugging
         );
+        // DbContext factory (for migrations, etc.)
+        services.AddSingleton<Func<IDbConnection>>(_ =>
+        {
+            var cs = @"Server=(localdb)\MSSQLLocalDB;Database=FlightDB;Trusted_Connection=True;TrustServerCertificate=True";
+            return () => new Microsoft.Data.SqlClient.SqlConnection(cs);
+        });
 
         // Generic repo
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
