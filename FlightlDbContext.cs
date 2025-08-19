@@ -20,6 +20,8 @@ namespace FlightApp.Data
         }
 
         // DbSets
+
+
         public DbSet<User> Users => Set<User>();
         public DbSet<UserSession> UserSessions => Set<UserSession>();
         public DbSet<Airport> Airports => Set<Airport>();

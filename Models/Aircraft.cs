@@ -16,7 +16,7 @@ namespace FlightApp.Models
 
         public int Capacity { get; set; } = 180;
 
-        public ICollection<Flight> Flights { get; set; } = new List<Flight>();
-        public ICollection<AircraftMaintenance> Maintenances { get; set; } = new List<AircraftMaintenance>();
+        public virtual ICollection<Flight> Flights { get; set; } = new List<Flight>();
+        public virtual ICollection<AircraftMaintenance> Maintenances { get; set; } = new List<AircraftMaintenance>();
     }
 }

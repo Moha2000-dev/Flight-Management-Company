@@ -12,7 +12,7 @@ namespace FlightApp.Models
         [Key] public int BookingId { get; set; }
 
         [Required] public int PassengerId { get; set; }
-        public Passenger? Passenger { get; set; }
+  
 
         [Required, MaxLength(12)]
         public string BookingRef { get; set; } = string.Empty; // PNR/Ref
@@ -20,7 +20,8 @@ namespace FlightApp.Models
         public DateTime BookingDate { get; set; } = DateTime.UtcNow;
         public BookingStatus Status { get; set; } = BookingStatus.Pending;
 
-        public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
+        public virtual Passenger? Passenger { get; set; }
+        public virtual ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
     }
 
     // Each ticket belongs to a booking + flight
@@ -30,10 +31,10 @@ namespace FlightApp.Models
         [Key] public int TicketId { get; set; }
 
         [Required] public int BookingId { get; set; }
-        public Booking? Booking { get; set; }
+        public virtual Booking? Booking { get; set; }
 
         [Required] public int FlightId { get; set; }
-        public Flight? Flight { get; set; }
+        public virtual Flight? Flight { get; set; }
 
         [Required, MaxLength(5)]
         public string SeatNumber { get; set; } = string.Empty;
@@ -43,7 +44,7 @@ namespace FlightApp.Models
 
         public bool CheckedIn { get; set; }
 
-        public ICollection<Baggage> Baggage { get; set; } = new List<Baggage>();
+        public virtual ICollection<Baggage> Baggage { get; set; } = new List<Baggage>();
     }
 
     public class Baggage
@@ -51,7 +52,7 @@ namespace FlightApp.Models
         [Key] public int BaggageId { get; set; }
 
         [Required] public int TicketId { get; set; }
-        public Ticket? Ticket { get; set; }
+        public virtual Ticket? Ticket { get; set; }
 
         [Column(TypeName = "decimal(6,2)")]
         public decimal WeightKg { get; set; }

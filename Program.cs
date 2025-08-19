@@ -33,6 +33,12 @@ class Program
             return () => new Microsoft.Data.SqlClient.SqlConnection(cs);
         });
 
+        // Program.cs
+        services.AddDbContext<FlightDbContext>(opt =>
+            opt.UseLazyLoadingProxies()
+               .UseSqlServer(cs));
+
+
         // Generic repo
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 

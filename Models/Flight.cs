@@ -16,18 +16,17 @@ namespace FlightApp.Models
         public string FlightNumber { get; set; } = string.Empty;
 
         [Required] public int RouteId { get; set; }
-        public Route? Route { get; set; }
+        public virtual Route? Route { get; set; }
 
         [Required] public int AircraftId { get; set; }
-        public Aircraft? Aircraft { get; set; }
-
+        public virtual Aircraft? Aircraft { get; set; }     // virtual!
         [Required] public DateTime DepartureUtc { get; set; }
         [Required] public DateTime ArrivalUtc { get; set; }
 
         [Required] public FlightStatus Status { get; set; } = FlightStatus.Scheduled;
 
-        public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
-        public ICollection<FlightCrew> FlightCrews { get; set; } = new List<FlightCrew>();
+        public virtual ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
+        public virtual ICollection<FlightCrew> FlightCrews { get; set; } = new List<FlightCrew>();
 
     }
 }

@@ -9,7 +9,7 @@ namespace FlightApp.Models
 
         // FK → Aircraft
         public int AircraftId { get; set; }
-        public Aircraft? Aircraft { get; set; }
+        public virtual Aircraft? Aircraft { get; set; }
 
         [Required, MaxLength(100)]
         public string WorkType { get; set; } = "Inspection";
@@ -20,7 +20,7 @@ namespace FlightApp.Models
         // when it was reported/scheduled
         public DateTime ScheduledUtc { get; set; } = DateTime.UtcNow;
 
-        // ✅ when the task was finished (null means still open)
+        //  when the task was finished (null means still open)
         public DateTime? CompletedUtc { get; set; }
 
         // optional flag if this grounds the aircraft
