@@ -18,7 +18,7 @@ namespace FlightApp.Models
         [MaxLength(60)] public string TimeZone { get; set; } = "UTC";
 
         // navs
-        public ICollection<Route> OriginRoutes { get; set; } = new List<Route>();
-        public ICollection<Route> DestRoutes { get; set; } = new List<Route>();
+        public virtual ICollection<Route> OriginRoutes { get; set; } = new HashSet<Route>();
+        public virtual ICollection<Route> DestRoutes { get; set; } = new HashSet<Route>();
     }
 }

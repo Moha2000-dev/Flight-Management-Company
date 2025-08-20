@@ -21,9 +21,8 @@ class Program
 
         // DbContext (single registration)
         services.AddDbContext<FlightDbContext>(opt =>
-            opt.UseSqlServer(cs)
-               .UseLazyLoadingProxies()        // lazy loading → make nav properties 'virtual'
-               .EnableSensitiveDataLogging()); // debug only
+    opt.UseLazyLoadingProxies()
+       .UseSqlServer(cs)); // debug only
 
         // Only keep this if you'll use Dapper; otherwise delete
         services.AddSingleton<Func<IDbConnection>>(_ => () => new SqlConnection(cs));

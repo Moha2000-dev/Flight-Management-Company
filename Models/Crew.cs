@@ -11,7 +11,7 @@ namespace FlightApp.Models
         [Required] public CrewRole Role { get; set; }
         [MaxLength(40)] public string? LicenseNo { get; set; }
 
-        public virtual ICollection<FlightCrew> FlightCrews { get; set; } = new List<FlightCrew>();
+        public virtual ICollection<FlightCrew> FlightCrews { get; set; } = new HashSet<FlightCrew>();
     }
 
     // Join table (many-to-many) between Flight and Crew
@@ -19,12 +19,14 @@ namespace FlightApp.Models
     public class FlightCrew
     {
         public int FlightId { get; set; }
-        public virtual Flight? Flight { get; set; }
+       
 
         public int CrewId { get; set; }
-        public virtual CrewMember? Crew { get; set; }
-
+        
         // Optional: role on that specific flight (e.g., “Captain”)
         [MaxLength(40)] public string? RoleOnFlight { get; set; }
+
+        public virtual Flight Flight { get; set; } = null!;
+        public virtual CrewMember Crew { get; set; } = null!;
     }
 }

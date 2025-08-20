@@ -14,9 +14,12 @@ namespace FlightApp.Models
         [Required, MaxLength(20)]
         public string PassportNo { get; set; } = string.Empty; // unique
 
-        [MaxLength(3)] public string? Nationality { get; set; }
+        [MaxLength(3)]
+        public string? Nationality { get; set; }
+
         public DateTime DOB { get; set; }
 
-        public ICollection<Booking> Bookings { get; set; } = new List<Booking>();
+        // MUST be virtual for lazy-loading proxies
+        public virtual ICollection<Booking> Bookings { get; set; } = new HashSet<Booking>();
     }
 }

@@ -9,7 +9,7 @@ namespace FlightApp.Models
 
         // FK → Aircraft
         public int AircraftId { get; set; }
-        public virtual Aircraft? Aircraft { get; set; }
+        public virtual Aircraft Aircraft { get; set; } = null!;
 
         [Required, MaxLength(100)]
         public string WorkType { get; set; } = "Inspection";
@@ -25,5 +25,6 @@ namespace FlightApp.Models
 
         // optional flag if this grounds the aircraft
         public bool GroundsAircraft { get; set; }
+       
     }
 }
